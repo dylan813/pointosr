@@ -1,1 +1,1 @@
-# point_osr
+# Point Cloud Open Set Recognition
