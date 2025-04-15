@@ -40,6 +40,8 @@ def visualize_frames(frames):
     vis.add_geometry(coordinate_frame)
     
     current_idx = [0]
+    current_cluster_idx = [0]
+    view_mode = ["frame"]
     
     def update_visualization(idx):
         if 0 <= idx < len(frames):
@@ -50,6 +52,7 @@ def visualize_frames(frames):
             
             total_points = 0
             cluster_info = []
+            all_pcds = []
             
             for file_path in clusters:
                 points = load_bin(file_path)
@@ -81,15 +84,34 @@ def visualize_frames(frames):
                     colors = np.zeros((len(points), 3))
                 
                 pcd.colors = o3d.utility.Vector3dVector(colors)
+                all_pcds.append((cluster_id, pcd))
                 
-                vis.add_geometry(pcd)
+                if view_mode[0] == "frame":
+                    vis.add_geometry(pcd)
             
-            print(f"\nFrame: {frame_num}")
-            print(f"Clusters: {len(clusters)}")
-            print(f"Total points: {total_points}")
-            print("Cluster details:")
-            for cluster_id, num_points in sorted(cluster_info):
-                print(f"  Cluster {cluster_id}: {num_points} points")
+            all_pcds.sort(key=lambda x: x[0])
+            
+            if view_mode[0] == "cluster":
+                if all_pcds:
+                    if current_cluster_idx[0] >= len(all_pcds):
+                        current_cluster_idx[0] = 0
+                    elif current_cluster_idx[0] < 0:
+                        current_cluster_idx[0] = len(all_pcds) - 1
+                    
+                    cluster_id, pcd = all_pcds[current_cluster_idx[0]]
+                    vis.add_geometry(pcd)
+                    print(f"\nFrame: {frame_num}, Showing Cluster {cluster_id} ({current_cluster_idx[0]+1}/{len(all_pcds)})")
+                    print(f"Cluster {cluster_id}: {len(pcd.points)} points")
+                else:
+                    print(f"\nFrame: {frame_num}, No clusters available")
+            else:
+                print(f"\nFrame: {frame_num} (Full View)")
+                print(f"Clusters: {len(clusters)}")
+                print(f"Total points: {total_points}")
+                print("Cluster details:")
+                for cluster_id, num_points in sorted(cluster_info):
+                    print(f"  Cluster {cluster_id}: {num_points} points")
+            
             print(f"Progress: {idx+1}/{len(frames)}")
             
             view_control = vis.get_view_control()
@@ -107,6 +129,7 @@ def visualize_frames(frames):
         current_idx[0] += 1
         if current_idx[0] >= len(frames):
             current_idx[0] = 0
+        current_cluster_idx[0] = 0
         update_visualization(current_idx[0])
         return False
     
@@ -114,6 +137,22 @@ def visualize_frames(frames):
         current_idx[0] -= 1
         if current_idx[0] < 0:
             current_idx[0] = len(frames) - 1
+        current_cluster_idx[0] = 0
+        update_visualization(current_idx[0])
+        return False
+    
+    def next_cluster_callback(vis):
+        if view_mode[0] == "cluster":
+            current_cluster_idx[0] += 1
+            update_visualization(current_idx[0])
+        return False
+    
+    def toggle_view_mode(vis):
+        if view_mode[0] == "frame":
+            view_mode[0] = "cluster"
+            current_cluster_idx[0] = 0
+        else:
+            view_mode[0] = "frame"
         update_visualization(current_idx[0])
         return False
     
@@ -125,12 +164,16 @@ def visualize_frames(frames):
     vis.register_key_callback(ord(' '), next_callback)
     vis.register_key_callback(ord('B'), prev_callback)
     vis.register_key_callback(ord('Q'), quit_callback)
+    vis.register_key_callback(ord('T'), toggle_view_mode)
+    vis.register_key_callback(ord('C'), next_cluster_callback)
     
     update_visualization(current_idx[0])
     
     print("\nNavigation Controls:")
     print("  Space or N: Next frame")
     print("  B: Previous frame")
+    print("  T: Toggle between full frame and individual cluster view")
+    print("  C: Next cluster (in cluster view mode)")
     print("  Q: Quit")
     print("  Mouse: Rotate/Pan/Zoom")
     
