@@ -25,5 +25,3 @@ pip install -r requirements.txt
 cd cpp/pointnet2_batch
 python setup.py install
 ```
-
-```
