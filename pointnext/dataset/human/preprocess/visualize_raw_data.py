@@ -123,14 +123,14 @@ def visualize_frames(frames):
     
     vis.register_key_callback(ord('N'), next_callback)
     vis.register_key_callback(ord(' '), next_callback)
-    vis.register_key_callback(ord('P'), prev_callback)
+    vis.register_key_callback(ord('B'), prev_callback)
     vis.register_key_callback(ord('Q'), quit_callback)
     
     update_visualization(current_idx[0])
     
     print("\nNavigation Controls:")
     print("  Space or N: Next frame")
-    print("  P: Previous frame")
+    print("  B: Previous frame")
     print("  Q: Quit")
     print("  Mouse: Rotate/Pan/Zoom")
     
