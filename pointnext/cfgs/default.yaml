@@ -1,10 +1,8 @@
-# ---------------------------------------------------------------------------- #
-# Dataset cfgs
-# ---------------------------------------------------------------------------- #
+# dataset cfgs
 dataset:
   common:
-    NAME: PointCloudDataset
-    data_dir: './data/human/human_clusters
+    NAME: HumanDataset
+    data_dir: './data/human/human_clusters'
     split_dir: './data/human'
     label_file: './data/human/labels.json'
   train:
@@ -31,36 +29,46 @@ val_batch_size: 64
 dataloader:
   num_workers: 6
 
-# ---------------------------------------------------------------------------- #
-# Training cfgs
-# ---------------------------------------------------------------------------- #
-# scheduler
+
+
+# training cfgs
 criterion_args:
   NAME: SmoothCrossEntropy
   label_smoothing: 0.3
 
-# Optimizer
 lr: 0.002
 optimizer:
  NAME: 'adamw'
  weight_decay: 0.05
 
 sched: cosine
+sched_on_epoch: True
+step_per_update: 1
 epochs: 250
+start_epoch: 1
 warmup_epochs: 0
 min_lr: 1.0e-4
 t_max: 200
 
 grad_norm_clip: 10
 
-# ---------------------------------------------------------------------------- #
+
+
 # io and misc
-# ---------------------------------------------------------------------------- #
 log_dir: 'human_dataset'
+root_dir: log/
 print_freq: 10
 val_freq: 1
-# ----------------- Model related
+save_freq: -1
+
+mode: 'train' # set to test for inference only
+seed: null
 pretrained_path: null 
 
 wandb:
   project: point_osr
+  use_wandb: False
+
+launcher: 'mp'
+local_rank: 0
+deterministic: False
