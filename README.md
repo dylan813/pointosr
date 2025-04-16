@@ -25,3 +25,9 @@ pip install -r requirements.txt
 cd cpp/pointnet2_batch
 python setup.py install
 ```
+
+## Train Model
+```bash
+cd point_osr
+CUDA_VISIBLE_DEVICES=0 python pointnext/classification/main.py --cfg pointnext/cfgs/pointnext-s.yaml
+```
