@@ -23,7 +23,6 @@ def extract_cluster_id(filename):
     return 0
 
 def filter_small_clusters(bin_files, max_points=280):
-    """Filter clusters with point count less than or equal to max_points."""
     small_clusters = []
     
     for file_path in bin_files:
