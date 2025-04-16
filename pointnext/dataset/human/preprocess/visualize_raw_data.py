@@ -32,9 +32,17 @@ def group_by_frame(files):
     sorted_frames = sorted(frames.items())
     return sorted_frames
 
-def visualize_frames(frames):
+def load_split_file(split_file_path):
+    """Load a split file and return a set of filenames to include."""
+    with open(split_file_path, 'r') as f:
+        return set(line.strip() for line in f if line.strip())
+
+def visualize_frames(frames, split_name=None):
     vis = o3d.visualization.VisualizerWithKeyCallback()
-    vis.create_window(window_name="Frame Visualization", width=1024, height=768)
+    window_title = "Frame Visualization"
+    if split_name:
+        window_title += f" - {split_name} split"
+    vis.create_window(window_name=window_title, width=1024, height=768)
     
     coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0)
     vis.add_geometry(coordinate_frame)
@@ -182,17 +190,36 @@ def visualize_frames(frames):
 
 def main():
     parser = argparse.ArgumentParser(description='Visualize point cloud frames')
-    parser.add_argument('--data', type=str, required=True, help='Path to point cloud data directory')
+    parser.add_argument('--data_dir', type=str, required=True, help='Path to point cloud data directory')
     parser.add_argument('--frame', type=int, help='Specific frame to start with (optional)')
+    parser.add_argument('--split', type=str, help='Path to dataset split')
     args = parser.parse_args()
     
+    split_filenames = None
+    split_name = None
+    
+    if args.split:
+        split_name = os.path.basename(args.split).replace('_split.txt', '')
+        split_filenames = load_split_file(args.split)
+        print(f"Loaded {len(split_filenames)} files from {args.split}")
+    
     bin_files = []
-    for root, _, files in os.walk(args.data):
+    for root, _, files in os.walk(args.data_dir):
         for file in files:
             if file.endswith('.bin'):
-                bin_files.append(os.path.join(root, file))
+                file_path = os.path.join(root, file)
+                
+                if split_filenames is None or file in split_filenames:
+                    bin_files.append(file_path)
+    
+    if split_filenames is not None:
+        print(f"Found {len(bin_files)} matching files from the {split_name} split")
     
     frames = group_by_frame(bin_files)
+    
+    if not frames:
+        print("No valid frames found. Please check your data path and dataset split.")
+        return
     
     start_idx = 0
     if args.frame is not None:
@@ -203,7 +230,7 @@ def main():
     
     frames = frames[start_idx:] + frames[:start_idx]
     
-    visualize_frames(frames)
+    visualize_frames(frames, split_name)
 
 if __name__ == "__main__":
     main()
