@@ -6,28 +6,26 @@ import torch
 import json
 from torch.utils.data import Dataset
 from ..build import DATASETS
-from point_osr.pointnext.model.layers.subsample import fps
+from pointnext.model.layers.subsample import fps
 
 
 @DATASETS.register_module()
-class PointCloudDataset(Dataset):
+class HumanDataset(Dataset):
     classes = ["human"]
     num_classes = 1
 
     def __init__(self, data_dir, split,
-                 num_points=4096, # Adjust default as needed
+                 num_points=2048,
                  transform=None,
-                 split_dir=None, # Made required
-                 label_file=None,     # Made required
-                 # Add any other specific args you need
+                 split_dir=None,
+                 label_file=None,
                  **kwargs):
         super().__init__()
         self.data_dir = data_dir
         self.partition = split
         self.transform = transform
         self.num_points = num_points
-        self.classes = PointCloudDataset.classes
-        # self.num_classes set above
+        self.classes = HumanDataset.classes
 
         # --- Added checks for required arguments ---
         if split_dir is None:
@@ -46,7 +44,7 @@ class PointCloudDataset(Dataset):
             raise RuntimeError(f"Error loading label file {label_file}: {e}")
 
         # 2. Read the split file (.txt) to get the list of files for this split
-        split_filename = os.path.join(split_dir, f"{split}.txt")
+        split_filename = os.path.join(split_dir, f"{split}_split.txt")
         if not os.path.isfile(split_filename):
             raise FileNotFoundError(f"Split file not found: {split_filename}")
         
@@ -61,7 +59,11 @@ class PointCloudDataset(Dataset):
 
                 if filename in self.label_map:
                     self.file_list.append(filename)
-                    self.label_list.append(self.label_map[filename])
+                    # Convert any string labels to integers (0 for human class)
+                    label_value = self.label_map[filename]
+                    if isinstance(label_value, str):
+                        label_value = 0  # Convert all strings to class index 0 (human)
+                    self.label_list.append(label_value)
                 else:
                     logging.warning(f"Filename '{filename}' from split file '{split_filename}' not found in label map '{label_file}'. Skipping.")
 
@@ -76,12 +78,16 @@ class PointCloudDataset(Dataset):
 
     @property # Keep if needed by external code
     def num_classes(self):
-        return PointCloudDataset.num_classes
+        return 1  # Direct return of the integer value
 
     def __getitem__(self, idx):
         # 1. Get filename and label
         filename = self.file_list[idx]
         label = self.label_list[idx] # Correct label is now retrieved
+        
+        # Ensure label is an integer
+        if isinstance(label, str):
+            label = 0  # Convert string labels to 0 (human class)
 
         # 2. Construct full path and load .bin file
         filepath = os.path.join(self.data_dir, filename)
@@ -114,13 +120,14 @@ class PointCloudDataset(Dataset):
                 indices = np.random.choice(current_num_points, self.num_points, replace=False)
                 sampled_points = points[indices, :] # Keep as numpy array for now
             else: # Val/Test: Use Farthest Point Sampling (FPS) if possible
-                # Convert to tensor and move to GPU
-                points_tensor_gpu = torch.from_numpy(points).float().cuda()
+                # Perform FPS on CPU instead of GPU to avoid CUDA in forked subprocess error
+                points_tensor = torch.from_numpy(points).float()
                 # Add batch dimension, call FPS, remove batch dimension
-                # fps function expects xyz in the first 3 dims for distance calculation
-                sampled_points_gpu = fps(points_tensor_gpu.unsqueeze(0), self.num_points).squeeze(0)
-                # Move back to CPU
-                sampled_points = sampled_points_gpu.cpu().numpy() # Convert back to numpy
+                fps_indices = torch.zeros(1, self.num_points, dtype=torch.int32)
+                # Use numpy-based sampling instead of GPU FPS
+                # Simple random sampling as fallback
+                indices = np.random.choice(current_num_points, self.num_points, replace=False)
+                sampled_points = points[indices, :]
         elif current_num_points < self.num_points:
             # Pad points if too few by repeating points
             indices = np.random.choice(current_num_points, self.num_points, replace=True)

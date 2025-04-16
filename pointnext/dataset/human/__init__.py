@@ -1,1 +1,1 @@
-from .human import PointCloudDataset
+from .human import HumanDataset
