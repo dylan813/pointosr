@@ -1,9 +1,9 @@
 import __init__
 import os, argparse, yaml, numpy as np
 from torch import multiprocessing as mp
-from examples.classification.train import main as train
-from examples.classification.pretrain import main as pretrain
-from openpoints.utils import EasyConfig, dist_utils, find_free_port, generate_exp_directory, resume_exp_directory, Wandb
+from point_osr.pointnext.classification.train import main as train
+from point_osr.pointnext.classification.pretrain import main as pretrain
+from point_osr.pointnext.utils import EasyConfig, dist_utils, find_free_port, generate_exp_directory, resume_exp_directory, Wandb
 
 
 if __name__ == "__main__":
