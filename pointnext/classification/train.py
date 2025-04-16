@@ -3,16 +3,15 @@ from tqdm import tqdm
 import torch, torch.nn as nn
 from torch import distributed as dist
 from torch.utils.tensorboard import SummaryWriter
-from point_osr.pointnext.utils import set_random_seed, save_checkpoint, load_checkpoint, load_checkpoint_inv, resume_checkpoint, setup_logger_dist, \
+from pointnext.utils import set_random_seed, save_checkpoint, load_checkpoint, load_checkpoint_inv, resume_checkpoint, setup_logger_dist, \
     cal_model_parm_nums, Wandb
-from point_osr.pointnext.utils import AverageMeter, ConfusionMatrix, get_mious
-from point_osr.pointnext.dataset import build_dataloader_from_cfg
-from point_osr.pointnext.transforms import build_transforms_from_cfg
-from point_osr.pointnext.optim import build_optimizer_from_cfg
-from point_osr.pointnext.scheduler import build_scheduler_from_cfg
-# from openpoints.loss import build_criterion_from_cfg
-from point_osr.pointnext.models import build_model_from_cfg
-from point_osr.pointnext.models.layers import furthest_point_sample, fps
+from pointnext.utils import AverageMeter, ConfusionMatrix, get_mious
+from pointnext.dataset import build_dataloader_from_cfg
+from pointnext.transforms import build_transforms_from_cfg
+from pointnext.optim import build_optimizer_from_cfg
+from pointnext.scheduler import build_scheduler_from_cfg
+from pointnext.model import build_model_from_cfg
+from pointnext.model.layers import furthest_point_sample, fps
 
 
 def get_features_by_keys(input_features_dim, data):
@@ -248,6 +247,8 @@ def train_one_epoch(model, train_loader, optimizer, scheduler, epoch, cfg):
         if num_curr_pts > npoints:  # point resampling strategy
             if npoints == 1024:
                 point_all = 1200
+            elif npoints == 2048:
+                point_all = 2400
             elif npoints == 4096:
                 point_all = 4800
             elif npoints == 8192:
