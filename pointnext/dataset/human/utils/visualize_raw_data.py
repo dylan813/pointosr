@@ -33,7 +33,6 @@ def group_by_frame(files):
     return sorted_frames
 
 def load_split_file(split_file_path):
-    """Load a split file and return a set of filenames to include."""
     with open(split_file_path, 'r') as f:
         return set(line.strip() for line in f if line.strip())
 
