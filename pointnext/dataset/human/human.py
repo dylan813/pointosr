@@ -17,7 +17,7 @@ class PointCloudDataset(Dataset):
     def __init__(self, data_dir, split,
                  num_points=4096, # Adjust default as needed
                  transform=None,
-                 split_file_dir=None, # Made required
+                 split_dir=None, # Made required
                  label_file=None,     # Made required
                  # Add any other specific args you need
                  **kwargs):
@@ -30,8 +30,8 @@ class PointCloudDataset(Dataset):
         # self.num_classes set above
 
         # --- Added checks for required arguments ---
-        if split_file_dir is None:
-            raise ValueError("split_file_dir must be provided")
+        if split_dir is None:
+            raise ValueError("split_dir must be provided")
         if label_file is None:
             raise ValueError("label_file must be provided")
         # --- End added checks ---
@@ -46,7 +46,7 @@ class PointCloudDataset(Dataset):
             raise RuntimeError(f"Error loading label file {label_file}: {e}")
 
         # 2. Read the split file (.txt) to get the list of files for this split
-        split_filename = os.path.join(split_file_dir, f"{split}.txt")
+        split_filename = os.path.join(split_dir, f"{split}.txt")
         if not os.path.isfile(split_filename):
             raise FileNotFoundError(f"Split file not found: {split_filename}")
         
