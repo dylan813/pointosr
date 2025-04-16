@@ -4,8 +4,8 @@ from torch.autograd import Function
 import torch
 import torch.nn as nn
 
-from point_osr.pointnext.cpp.pointnet2_batch import pointnet2_cuda
-from point_osr.pointnext.models.layers import create_convblock1d
+from pointnext.cpp.pointnet2_batch import pointnet2_cuda
+from pointnext.model.layers import create_convblock1d
 
 
 class ThreeNN(Function):
