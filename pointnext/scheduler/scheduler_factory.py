@@ -2,11 +2,11 @@
 Borrowed from Ross Wightman (https://www.github.com/timm)
 """
 from .cosine_lr import CosineLRScheduler
-from .multistep_lr import MultiStepLRScheduler
-from .plateau_lr import PlateauLRScheduler
-from .poly_lr import PolyLRScheduler
-from .step_lr import StepLRScheduler
-from .tanh_lr import TanhLRScheduler
+# from .multistep_lr import MultiStepLRScheduler
+# from .plateau_lr import PlateauLRScheduler
+# from .poly_lr import PolyLRScheduler
+# from .step_lr import StepLRScheduler
+# from .tanh_lr import TanhLRScheduler
 
 
 def build_scheduler_from_cfg(args, optimizer, return_epochs=False):
