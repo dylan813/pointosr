@@ -3,8 +3,6 @@ dataset:
   common:
     NAME: HumanDataset
     data_dir: './data/human/human_clusters'
-    split_dir: './data/human'
-    label_file: './data/human/labels.json'
   train:
     split: train
   val:
