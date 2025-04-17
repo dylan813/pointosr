@@ -11,85 +11,100 @@ from pointnext.model.layers.subsample import fps
 
 @DATASETS.register_module()
 class HumanDataset(Dataset):
-    classes = ["human"]
-    num_classes = 1
+    # Classes remain the same
+    classes = ["human", "false"]
+    num_classes = len(classes)
+
+    # Map directory names to class indices
+    dir_to_class_idx = {
+        "human_clusters": 0,
+        "falser_clusters": 1,
+    }
+    # Reverse map for logging/debugging if needed
+    idx_to_class = {v: k for k, v in dir_to_class_idx.items()}
 
     def __init__(self, data_dir, split,
                  num_points=2048,
                  transform=None,
-                 split_dir=None,
-                 label_file=None,
+                 # split_dir parameter is removed as it's the same as data_dir
+                 # split_dir=None,
                  **kwargs):
         super().__init__()
         self.data_dir = data_dir
         self.partition = split
         self.transform = transform
         self.num_points = num_points
-        self.classes = HumanDataset.classes
+        self.classes = HumanDataset.classes # Use the defined classes
 
-        # --- Added checks for required arguments ---
-        if split_dir is None:
-            raise ValueError("split_dir must be provided")
-        if label_file is None:
-            raise ValueError("label_file must be provided")
-        # --- End added checks ---
+        # --- Check for required arguments ---
+        # Removed split_dir check
+        # if split_dir is None:
+        #     raise ValueError("split_dir must be provided")
 
-        # 1. Load label mapping from JSON
-        if not os.path.isfile(label_file):
-             raise FileNotFoundError(f"Label file not found: {label_file}")
-        try:
-            with open(label_file, 'r') as f:
-                self.label_map = json.load(f)
-        except Exception as e:
-            raise RuntimeError(f"Error loading label file {label_file}: {e}")
+        # 1. Define class mapping based on directory names
+        # (Moved mapping to class level for clarity)
+        logging.info(f"Directory to class index mapping: {self.dir_to_class_idx}")
 
-        # 2. Read the split file (.txt) to get the list of files for this split
-        split_filename = os.path.join(split_dir, f"{split}_split.txt")
+        # 2. Read the split file (.txt) using data_dir
+        # Use data_dir to find the split file
+        split_filename = os.path.join(data_dir, f"{split}_split.txt")
         if not os.path.isfile(split_filename):
             raise FileNotFoundError(f"Split file not found: {split_filename}")
-        
+
         self.file_list = []
         self.label_list = []
         with open(split_filename, 'r') as f:
             for line in f:
-                # Assuming each line contains a filename relative to data_dir
-                # This filename must be a key in your labels.json
-                filename = line.strip()
-                if not filename: continue # Skip empty lines
+                # Each line contains a filename relative to data_dir
+                # e.g., "human_clusters/sample1.bin" or "falser_clusters/sampleA.bin"
+                relative_filepath = line.strip()
+                if not relative_filepath: continue # Skip empty lines
 
-                if filename in self.label_map:
-                    self.file_list.append(filename)
-                    # Convert any string labels to integers (0 for human class)
-                    label_value = self.label_map[filename]
-                    if isinstance(label_value, str):
-                        label_value = 0  # Convert all strings to class index 0 (human)
-                    self.label_list.append(label_value)
-                else:
-                    logging.warning(f"Filename '{filename}' from split file '{split_filename}' not found in label map '{label_file}'. Skipping.")
+                try:
+                    # Extract the first directory component as the class indicator
+                    # os.path.normpath handles potential different separators (/, \\)
+                    # os.path.split splits into (head, tail), we want the first part of head
+                    parts = os.path.normpath(relative_filepath).split(os.sep)
+                    if len(parts) < 2: # Ensure there is at least one directory level
+                        logging.warning(f"File path '{relative_filepath}' in split file '{split_filename}' does not seem to be in a class subdirectory (e.g., 'human_clusters/file.bin'). Skipping.")
+                        continue
+
+                    class_dir_name = parts[0] # e.g., "human_clusters" or "falser_clusters"
+
+                    # Get the integer label index from the directory name
+                    label_idx = self.dir_to_class_idx.get(class_dir_name)
+
+                    if label_idx is not None:
+                        self.file_list.append(relative_filepath) # Store the full relative path
+                        self.label_list.append(label_idx)
+                    else:
+                        # Handle cases where the directory name is not in our mapping
+                        logging.warning(f"Directory name '{class_dir_name}' extracted from path '{relative_filepath}' is not a recognized class directory {list(self.dir_to_class_idx.keys())}. Skipping.")
+
+                except Exception as e:
+                    logging.error(f"Error processing line '{relative_filepath}' from split file '{split_filename}': {e}")
+
 
         if len(self.file_list) == 0:
-             raise RuntimeError(f"No valid files found for split {split} in {split_filename} with labels in {label_file}")
-        
+             raise RuntimeError(f"No valid files found for split {split} in {split_filename} with directory structure {list(self.dir_to_class_idx.keys())}")
+
         logging.info(f'Successfully loaded {split} split. Number of samples: {len(self.file_list)}')
         logging.info(f'Dataset: {self.__class__.__name__}, Classes: {self.classes}, Num classes: {self.num_classes}')
 
-    # --- Label determination is handled in __init__ now ---
-    # def _get_label_from_filename(self, filename): ... (Removed)
 
     @property # Keep if needed by external code
     def num_classes(self):
-        return 1  # Direct return of the integer value
+        # Return the dynamically calculated number of classes
+        return len(self.classes)
 
     def __getitem__(self, idx):
-        # 1. Get filename and label
+        # 1. Get filename and label (label is already an integer index)
+        # filename now includes the relative path, e.g., "human_clusters/sample1.bin"
         filename = self.file_list[idx]
-        label = self.label_list[idx] # Correct label is now retrieved
-        
-        # Ensure label is an integer
-        if isinstance(label, str):
-            label = 0  # Convert string labels to 0 (human class)
+        label = self.label_list[idx] # Correct label index retrieved
 
         # 2. Construct full path and load .bin file
+        # The filename already contains the relative path from data_dir
         filepath = os.path.join(self.data_dir, filename)
         try:
             raw_points = np.fromfile(filepath, dtype=np.float32)
@@ -117,17 +132,20 @@ class HumanDataset(Dataset):
         if current_num_points > self.num_points:
             # Sample points if too many
             if self.partition == 'train':
+                # Training: Use random sampling
                 indices = np.random.choice(current_num_points, self.num_points, replace=False)
-                sampled_points = points[indices, :] # Keep as numpy array for now
-            else: # Val/Test: Use Farthest Point Sampling (FPS) if possible
-                # Perform FPS on CPU instead of GPU to avoid CUDA in forked subprocess error
-                points_tensor = torch.from_numpy(points).float()
+                sampled_points = points[indices, :] # Keep as numpy array
+            else:
+                # Val/Test: Use Farthest Point Sampling (FPS)
+                # Convert points to tensor for FPS
+                points_tensor = torch.from_numpy(points).float().cuda() # Move to GPU if available
                 # Add batch dimension, call FPS, remove batch dimension
-                fps_indices = torch.zeros(1, self.num_points, dtype=torch.int32)
-                # Use numpy-based sampling instead of GPU FPS
-                # Simple random sampling as fallback
-                indices = np.random.choice(current_num_points, self.num_points, replace=False)
-                sampled_points = points[indices, :]
+                # The fps function expects input shape (B, N, C) and k (num_points)
+                # It returns indices of shape (B, k)
+                # Ensure fps function is correctly imported: from pointnext.model.layers.subsample import fps
+                fps_indices = fps(points_tensor.unsqueeze(0), self.num_points) # Shape: (1, num_points)
+                # Use the indices returned by FPS to select points from the original numpy array
+                sampled_points = points[fps_indices.squeeze(0).cpu().numpy(), :] # Select points and move indices to CPU/numpy
         elif current_num_points < self.num_points:
             # Pad points if too few by repeating points
             indices = np.random.choice(current_num_points, self.num_points, replace=True)
