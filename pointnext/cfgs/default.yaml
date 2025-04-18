@@ -23,7 +23,7 @@ datatransforms:
     gravity_dim: 1
 
 batch_size: 32
-val_batch_size: 64 
+val_batch_size: 32
 dataloader:
   num_workers: 6
 
