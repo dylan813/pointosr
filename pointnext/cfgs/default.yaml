@@ -2,7 +2,7 @@
 dataset:
   common:
     NAME: HumanDataset
-    data_dir: './data/human/human_clusters'
+    data_dir: './data/human'
   train:
     split: train
   val:
@@ -11,7 +11,7 @@ dataset:
 
 num_points: 2048  # the number of points passed into model
 num_classes: &nclass
-  1
+  2
 
 datatransforms:
   train: [PointsToTensor, PointCloudScaling, PointCloudCenterAndNormalize, PointCloudRotation]
@@ -28,7 +28,6 @@ dataloader:
   num_workers: 6
 
 
-
 # training cfgs
 criterion_args:
   NAME: SmoothCrossEntropy
@@ -42,14 +41,13 @@ optimizer:
 sched: cosine
 sched_on_epoch: True
 step_per_update: 1
-epochs: 250
+epochs: 200
 start_epoch: 1
 warmup_epochs: 0
 min_lr: 1.0e-4
 t_max: 200
 
 grad_norm_clip: 10
-
 
 
 # io and misc
@@ -65,7 +63,7 @@ pretrained_path: null
 
 wandb:
   project: point_osr
-  use_wandb: False
+  use_wandb: True
 
 launcher: 'mp'
 local_rank: 0
