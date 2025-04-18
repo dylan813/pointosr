@@ -7,7 +7,7 @@ dataset:
     split: train
   val:
     split: val
-    num_points: 1024 
+    num_points: 2048
 
 num_points: 2048  # the number of points passed into model
 num_classes: &nclass
@@ -41,7 +41,7 @@ optimizer:
 sched: cosine
 sched_on_epoch: True
 step_per_update: 1
-epochs: 200
+epochs: 250
 start_epoch: 1
 warmup_epochs: 0
 min_lr: 1.0e-4
