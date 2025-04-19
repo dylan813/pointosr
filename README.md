@@ -22,7 +22,7 @@ pip install -r requirements.txt
 ```
 
 ```bash
-conda install -c conda-forge gcc_linux-64=12 gxx_linux-64=12
+conda install -c -y conda-forge gcc_linux-64=12 gxx_linux-64=12
 
 export CC=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-gcc
 export CXX=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-g++
