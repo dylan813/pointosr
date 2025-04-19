@@ -1,6 +1,6 @@
 # Point Cloud Open Set Recognition
 
-This repository implements open set recognition methods for 3D point cloud data.
+This repository implements an open set recognition method for 3D point cloud data.
 
 ## Installation
 
@@ -22,7 +22,7 @@ pip install -r requirements.txt
 ```
 
 ```bash
-cd cpp/pointnet2_batch
+cd pointnext/cpp/pointnet2_batch
 python setup.py install
 ```
 
