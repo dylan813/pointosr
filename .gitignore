@@ -3,3 +3,7 @@ __pycache__/
 log/
 wandb/
 *.sh
+
+build/
+dist/
+*.egg-info/
