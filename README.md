@@ -22,6 +22,16 @@ pip install -r requirements.txt
 ```
 
 ```bash
+conda install -c conda-forge gcc_linux-64=12 gxx_linux-64=12
+
+export CC=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-gcc
+export CXX=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-g++
+export CUDAHOSTCXX=$CXX
+export CFLAGS="-fPIC"
+export NVCC_FLAGS="--compiler-options '-fPIC' -allow-unsupported-compiler"
+```
+
+```bash
 cd pointnext/cpp/pointnet2_batch
 python setup.py install
 ```
