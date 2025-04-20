@@ -1,4 +1,4 @@
-from openpoints.utils import registry
+from pointnext.utils import registry
 MODELS = registry.Registry('models')
 
 

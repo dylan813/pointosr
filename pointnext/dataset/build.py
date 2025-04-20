@@ -4,8 +4,8 @@ Author: PointNeXt
 import numpy as np
 import torch
 from easydict import EasyDict as edict
-from openpoints.utils import registry
-from openpoints.transforms import build_transforms_from_cfg
+from pointnext.utils import registry
+from pointnext.transforms import build_transforms_from_cfg
 
 DATASETS = registry.Registry('dataset')
 
