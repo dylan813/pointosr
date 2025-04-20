@@ -105,9 +105,24 @@ The optimal values for `--threshold_human` and `--threshold_false` should be det
 3. Choosing thresholds based on desired performance (e.g., retaining 95% of true positives for each class).
 (A script like `tune_thresholds.py` could be created for this purpose).
 
-### Step 5: (Removed) Comprehensive Evaluation
+### Step 5: Generate Visualizations (Optional)
 
-The functionality previously in `evaluate_osr.py` (like confusion matrix, detailed plots) has been partially integrated into `osr_classifier.py`. If more detailed, specific evaluation plots (like t-SNE or ROC curves tailored to the dual-threshold setup) are needed, the `evaluate_osr.py` script could be adapted, or new evaluation functions added.
+To generate additional visualizations like t-SNE plots of the feature space and confusion matrices, use the updated `evaluate_osr.py` script. This script requires pre-extracted features.
+
+```bash
+python osr/evaluate_osr.py \
+    --test_features data/features/val_features.pkl \
+    --prototypes data/prototypes.pkl \
+    --threshold_human 0.8 \
+    --threshold_false 0.7 \
+    --output_dir results_visuals
+```
+
+**Explanation of Arguments:**
+- `--test_features`: Path to the pre-extracted features file (.pkl) to visualize.
+- `--prototypes`: Path to the corresponding prototypes file (.pkl).
+- `--threshold_human`, `--threshold_false`: The thresholds used for classification (needed to get predictions for the confusion matrix).
+- `--output_dir`: Directory to save the generated plot files (e.g., `tsne_features.png`, `confusion_matrix.png`).
 
 ## Adding New Classes
 
@@ -118,8 +133,8 @@ This specific implementation is tailored for the binary (human/false) known-set 
 - `models/pointnext_wrapper.py`: Wrapper for PointNeXt model to extract features.
 - `extract_features.py`: Script to extract and save features for known classes.
 - `build_prototypes.py`: Script to build 'human' and 'false' prototypes from features.
-- `osr_classifier.py`: Implementation of the dual-threshold OSR classifier and evaluation script.
-- `evaluate_osr.py`: (Potentially outdated/redundant) Previous comprehensive evaluation script. Needs adaptation if specific plots beyond those in `osr_classifier.py` are required for the dual-threshold method.
+- `osr_classifier.py`: Implementation of the dual-threshold OSR classifier and core evaluation script (metrics, similarity histograms).
+- `evaluate_osr.py`: Generates additional visualizations (t-SNE, confusion matrix) for a given set of features and thresholds.
 
 ## Requirements
 
@@ -128,7 +143,7 @@ This specific implementation is tailored for the binary (human/false) known-set 
 - scikit-learn
 - matplotlib
 - tqdm
-- (Optional: seaborn, if adapting `evaluate_osr.py` for advanced plots)
+- seaborn # Used in evaluate_osr.py for confusion matrix display
 
 ## Reference
 
