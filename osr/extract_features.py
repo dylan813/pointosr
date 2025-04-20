@@ -12,7 +12,7 @@ import pickle
 sys.path.append(str(Path(__file__).parent.parent))
 
 from dataset.build import build_dataloader_from_cfg
-from models.pointnext_wrapper import PointNeXtFeatureExtractor
+from model.pointnext_wrapper import PointNeXtFeatureExtractor
 
 def extract_and_save_features(model, data_loader, save_dir, subset_name="train"):
     """Extract features for all samples in the data loader and save them.

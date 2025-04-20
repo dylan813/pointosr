@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 sys.path.append(str(Path(__file__).parent.parent))
 
 from dataset.build import build_dataloader_from_cfg
-from models.pointnext_wrapper import PointNeXtFeatureExtractor
+from model.pointnext_wrapper import PointNeXtFeatureExtractor
 
 class OSRClassifier:
     """Prototype-based Open Set Recognition classifier using per-class thresholds.
