@@ -18,11 +18,23 @@ The system follows these steps:
 
 ### Step 1: Extract Features
 
-First, extract features from the training data (containing only known classes, e.g., human=0, false=1):
+First, extract features from the training data (containing only known classes, e.g., human=0, false=1). This now requires separate configuration files for the model architecture and the dataset setup.
 
 ```bash
-python osr/extract_features.py --cfg configs/your_config.py --pretrained path/to/pretrained_model.pth --save_dir data/features --subset train
+python osr/extract_features.py \
+    --cfg configs/pointnext-s.yaml \
+    --data_cfg configs/default.yaml \
+    --pretrained path/to/pretrained_model.pth \
+    --save_dir data/features \
+    --subset train
 ```
+
+**Explanation of Arguments:**
+- `--cfg`: Path to the model architecture configuration file (e.g., `pointnext-s.yaml`).
+- `--data_cfg`: Path to the data/dataloader configuration file (e.g., `default.yaml`).
+- `--pretrained`: Path to the pretrained model weights.
+- `--save_dir`: Directory to save the output features file.
+- `--subset`: Which data split to process ('train', 'val', 'test', or 'all').
 
 This will create a `data/features/train_features.pkl` file containing feature vectors and their corresponding labels (0 or 1).
 
