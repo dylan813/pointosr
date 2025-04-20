@@ -52,28 +52,50 @@ This will create a `data/prototypes.pkl` file containing the prototype vectors f
 
 You can now classify test samples and evaluate the dual-threshold OSR performance using the updated `osr_classifier.py` script. This script now handles both classification and generates key evaluation metrics and plots.
 
+**Option A: Using Pre-extracted Features**
+
+If you have already extracted features using `extract_features.py` (e.g., into `data/features/val_features.pkl`), you can run:
+
 ```bash
 python osr/osr_classifier.py \
-    --cfg configs/your_config.py \
     --prototypes data/prototypes.pkl \
     --threshold_human 0.8 \
     --threshold_false 0.7 \
-    --test_features data/features/test_features.pkl \
+    --test_features data/features/val_features.pkl \
+    --plot \
+    --output_dir results_dual_thresh 
+```
+
+**Option B: Extracting Features On-the-Fly**
+
+Alternatively, the script can extract features directly using the model. This requires providing model and data configurations:
+
+```bash
+python osr/osr_classifier.py \
+    --cfg configs/pointnext-s.yaml \
+    --data_cfg configs/default.yaml \
+    --pretrained path/to/pretrained_model.pth \
+    --prototypes data/prototypes.pkl \
+    --threshold_human 0.8 \
+    --threshold_false 0.7 \
+    --eval_split val \
     --plot \
     --output_dir results_dual_thresh 
 ```
 
 **Explanation of Arguments:**
-- `--cfg`: Path to the model configuration file (needed if extracting features on the fly).
-- `--prototypes`: Path to the `prototypes.pkl` file created in Step 2.
-- `--threshold_human`: The cosine similarity threshold specific to the human class (0).
-- `--threshold_false`: The cosine similarity threshold specific to the false class (1).
-- `--test_features`: Path to a pickle file containing test features and labels (optional; if not provided, features will be extracted using `--pretrained`).
-- `--pretrained`: Path to the pretrained model (required if `--test_features` is not provided).
+- `--cfg`: Path to the model architecture config file (e.g., `pointnext-s.yaml`). **Required only if extracting features on the fly.**
+- `--data_cfg`: Path to the data/dataloader config file (e.g., `default.yaml`). **Required only if extracting features on the fly.**
+- `--pretrained`: Path to the pretrained model weights. **Required only if extracting features on the fly.**
+- `--prototypes`: Path to the `prototypes.pkl` file created in Step 2. (Required)
+- `--threshold_human`: The cosine similarity threshold specific to the human class (0). (Required)
+- `--threshold_false`: The cosine similarity threshold specific to the false class (1). (Required)
+- `--test_features`: Path to a pickle file containing pre-extracted test/validation features and labels. If provided, on-the-fly extraction arguments (`--cfg`, `--data_cfg`, `--pretrained`, `--eval_split`) are ignored.
+- `--eval_split`: Which data split ('val' or 'test') to use from `--data_cfg` when extracting features on the fly. Defaults to 'val'.
 - `--plot`: Flag to generate evaluation plots (similarity distributions).
 - `--output_dir`: Directory to save metrics and plots.
 
-This script will output metrics like accuracy for human samples, accuracy for false samples, and the rejection rate for true unknown samples (if present in the test set). It will also save plots visualizing the similarity distributions against each prototype.
+This script will output metrics like accuracy for human samples, accuracy for false samples, and the rejection rate for true unknown samples (if present in the evaluation set). It will also save plots visualizing the similarity distributions against each prototype.
 
 ### Step 4: (Optional) Threshold Tuning
 
