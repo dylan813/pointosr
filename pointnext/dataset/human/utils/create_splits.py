@@ -65,21 +65,28 @@ def create_splits(data_dirs, output_dir, train_ratio=0.65, val_ratio=0.175, test
 
     os.makedirs(output_dir, exist_ok=True)
     
-    train_file = os.path.join(output_dir, 'train_split.txt')
-    val_file = os.path.join(output_dir, 'val_split.txt')
-    test_file = os.path.join(output_dir, 'test_split.txt')
+    created_split_files = []
     
-    with open(train_file, 'w') as f:
-        for file in all_train_files:
-            f.write(f"{file}\n")
+    if train_ratio > 0:
+        train_file = os.path.join(output_dir, 'train_split.txt')
+        with open(train_file, 'w') as f:
+            for file in all_train_files:
+                f.write(f"{file}\n")
+        created_split_files.append(train_file)
             
-    with open(val_file, 'w') as f:
-        for file in all_val_files:
-            f.write(f"{file}\n")
+    if val_ratio > 0:
+        val_file = os.path.join(output_dir, 'val_split.txt')
+        with open(val_file, 'w') as f:
+            for file in all_val_files:
+                f.write(f"{file}\n")
+        created_split_files.append(val_file)
             
-    with open(test_file, 'w') as f:
-        for file in all_test_files:
-             f.write(f"{file}\n")
+    if test_ratio > 0:
+        test_file = os.path.join(output_dir, 'test_split.txt')
+        with open(test_file, 'w') as f:
+            for file in all_test_files:
+                 f.write(f"{file}\n")
+        created_split_files.append(test_file)
 
     total_files_in_splits = len(all_train_files) + len(all_val_files) + len(all_test_files)
     
@@ -98,9 +105,11 @@ def create_splits(data_dirs, output_dir, train_ratio=0.65, val_ratio=0.175, test
         print("No files were assigned to splits.")
 
     print(f"\nSplit files created at:")
-    print(f"- {train_file}")
-    print(f"- {val_file}")
-    print(f"- {test_file}")
+    if created_split_files:
+        for file_path in created_split_files:
+            print(f"- {file_path}")
+    else:
+        print("- None (all ratios were zero or no files found)")
 
 def main():
     parser = argparse.ArgumentParser(description='Create train/val/test splits by processing .bin files within each directory independently.')
