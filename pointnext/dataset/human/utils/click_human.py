@@ -55,15 +55,20 @@ def visualize_frames(frames, output_file_path, split_name=None):
     # Needed to map current_cluster_idx back to file path for selection
     all_pcds_data: List[Tuple[int, o3d.geometry.PointCloud, str]] = [] 
 
-    # Define a list of distinct colors for clusters
+    # Define a list of distinct colors for clusters (toned down)
     DISTINCT_COLORS = [
-        [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],  # Red, Green, Blue
-        [1.0, 1.0, 0.0], [1.0, 0.0, 1.0], [0.0, 1.0, 1.0],  # Yellow, Magenta, Cyan
-        [1.0, 0.5, 0.0], [0.5, 0.0, 1.0], [0.0, 0.5, 1.0],  # Orange, Purple, Sky Blue
-        [0.5, 1.0, 0.5], [1.0, 0.5, 0.5], [0.5, 0.5, 1.0],  # Lime, Pink, Lavender
-        [0.8, 0.8, 0.2], [0.2, 0.8, 0.8], [0.8, 0.2, 0.8],  # Olive, Teal, Violet
-        [0.7, 0.7, 0.7], [1.0, 0.7, 0.2], [0.2, 1.0, 0.7],  # Gray, Gold, Mint
-        [0.5, 0.2, 0.2], [0.2, 0.5, 0.2], [0.2, 0.2, 0.5],  # Dark Red, Dark Green, Dark Blue
+        [1.0, 0.0, 0.0],  # Red
+        [0.0, 0.0, 1.0],  # Blue
+        [1.0, 0.5, 0.0],  # Orange
+        [0.5, 0.0, 1.0],  # Purple
+        [1.0, 0.5, 0.5],  # Pink
+        [0.5, 0.5, 1.0],  # Lavender
+        [0.8, 0.8, 0.2],  # Olive
+        [0.8, 0.2, 0.8],  # Violet
+        [0.7, 0.7, 0.7],  # Gray
+        [0.5, 0.2, 0.2],  # Dark Red
+        [0.2, 0.5, 0.2],  # Dark Green
+        [0.2, 0.2, 0.5],  # Dark Blue
     ]
 
     def update_visualization(idx):
