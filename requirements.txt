@@ -18,6 +18,7 @@ Cython==0.29.28
 pandas
 deepspeed
 shortuuid
+open3d  # for point cloud visualization, not needed for training
 
 # for docs
 mkdocs-material
