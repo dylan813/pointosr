@@ -2,12 +2,14 @@
 dataset:
   common:
     NAME: HumanDataset
-    data_dir: './data/human'
+    data_dir: './data/eval_human'
   train:
     split: train
   val:
     split: val
     num_points: 2048
+  test:
+    split: test
 
 num_points: 2048  # the number of points passed into model
 num_classes: &nclass
@@ -51,19 +53,19 @@ grad_norm_clip: 10
 
 
 # io and misc
+mode: 'test' # set to test for inference only
+pretrained_path: './log/cfgs/bs16_vbs4/checkpoint/cfgs-train-pointnext-s-ngpus1-seed6229-20250417-232112-WX9iwg4Qpwtd5HFr33K8sd_ckpt_best.pth'
+seed: null
+
+wandb:
+  project: point_osr
+  use_wandb: False
+
 log_dir: 'human_dataset'
 root_dir: log/
 print_freq: 10
 val_freq: 1
 save_freq: -1
-
-mode: 'train' # set to test for inference only
-seed: null
-pretrained_path: null 
-
-wandb:
-  project: point_osr
-  use_wandb: True
 
 launcher: 'mp'
 local_rank: 0
