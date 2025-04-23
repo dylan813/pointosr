@@ -41,3 +41,9 @@ python setup.py install
 cd point_osr
 CUDA_VISIBLE_DEVICES=0 python pointnext/classification/main.py --cfg pointnext/cfgs/pointnext-s.yaml
 ```
+
+## Evaluate Model
+```bash
+cd point_osr
+CUDA_VISIBLE_DEVICES=0 python pointnext/classification/main.py --cfg pointnext/cfgs/pointnext-s.yaml mode=test --pretrained_path log/cfgs/.../...ckpt_best.pth
+```
