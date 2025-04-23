@@ -53,8 +53,8 @@ grad_norm_clip: 10
 
 
 # io and misc
-mode: 'test' # set to test for inference only
-pretrained_path: './log/cfgs/bs16_vbs4/checkpoint/cfgs-train-pointnext-s-ngpus1-seed6229-20250417-232112-WX9iwg4Qpwtd5HFr33K8sd_ckpt_best.pth'
+mode: 'train' # set to test for inference only
+pretrained_path: null
 seed: null
 
 wandb:

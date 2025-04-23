@@ -47,3 +47,9 @@ CUDA_VISIBLE_DEVICES=0 python pointnext/classification/main.py --cfg pointnext/c
 cd point_osr
 CUDA_VISIBLE_DEVICES=0 python pointnext/classification/main.py --cfg pointnext/cfgs/pointnext-s.yaml mode=test --pretrained_path log/cfgs/.../...ckpt_best.pth
 ```
+
+## Test Computational Efficiency
+```bash
+cd point_osr
+CUDA_VISIBLE_DEVICES=0 python pointnext/eval/profile.py --cfg pointnext/cfgs/pointnext-s.yaml batch_size=128 num_points=1024 timing=True flops=True
+```
