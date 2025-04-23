@@ -131,7 +131,7 @@ def visualize_frames(frames, output_file_path, split_name=None):
                     # Removed current_geometries_filepaths.append(file_path)
                     print(f"  Cluster {cluster_id}: {len(pcd.points)} points ({os.path.basename(file_path)})")
             
-            print(f"Progress: {idx+1}/{len(frames)}")
+            print(f"Progress: {frame_num}/{len(frames)}")
             
             view_control = vis.get_view_control()
             front = [1, -1, 0]
