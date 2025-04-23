@@ -185,17 +185,32 @@ def visualize_frames(frames, output_file_path, split_name=None):
             if all_pcds_data and 0 <= current_cluster_idx[0] < len(all_pcds_data):
                 cluster_id, _, selected_file_path = all_pcds_data[current_cluster_idx[0]]
                 base_name = os.path.basename(selected_file_path)
-                print(f"\n--- Selection Recorded (Key 'S') ---")
+                print(f"\n--- Key 'S' Pressed ---")
                 print(f"  Cluster ID: {cluster_id}")
                 print(f"  Cluster File: {base_name}")
-                
+
+                # Check if the file path is already recorded
+                already_recorded = False
                 try:
-                    with open(output_file_path, 'a') as f:
-                        f.write(selected_file_path + '\n')
-                    print(f"  Recorded to: {output_file_path}")
+                    if os.path.exists(output_file_path):
+                        with open(output_file_path, 'r') as f:
+                            existing_paths = {line.strip() for line in f}
+                            if selected_file_path in existing_paths:
+                                already_recorded = True
                 except Exception as e:
-                    print(f"  Error writing to file {output_file_path}: {e}")
-                print(f"----------------------------------")
+                    print(f"  Warning: Could not read output file {output_file_path} to check for duplicates: {e}")
+
+                if not already_recorded:
+                    try:
+                        with open(output_file_path, 'a') as f:
+                            f.write(selected_file_path + '\n')
+                        print(f"  Recorded to: {output_file_path}")
+                    except Exception as e:
+                        print(f"  Error writing to file {output_file_path}: {e}")
+                else:
+                    print(f"  Already recorded in: {output_file_path}")
+                    
+                print(f"-------------------------")
             else:
                 print("\nCannot select: No cluster currently displayed or index out of bounds.")
         else:
