@@ -119,7 +119,7 @@ def visualize_frames(frames, split_name=None):
                 for cluster_id, num_points in sorted(cluster_info):
                     print(f"  Cluster {cluster_id}: {num_points} points")
             
-            print(f"Progress: {idx+1}/{len(frames)}")
+            print(f"Progress: {frame_num}/{len(frames)-1}")
             
             view_control = vis.get_view_control()
             front = [1, -1, 0]
