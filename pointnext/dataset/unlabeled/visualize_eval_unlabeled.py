@@ -109,7 +109,7 @@ def visualize_frames(frames):
             
             # Set camera view
             view_control = vis.get_view_control()
-            front = [1, -1, 0]
+            front = [1, -1, 0.5]
             up = [0, 0, 1]
             view_control.set_front(front)
             view_control.set_up(up)
@@ -160,7 +160,7 @@ def visualize_frames(frames):
 
 def main():
     parser = argparse.ArgumentParser(description='Visualize point cloud frames with classifications')
-    parser.add_argument('--predictions', type=str, default='predictions.csv', help='Path to predictions CSV')
+    parser.add_argument('--predictions', type=str, default='log/unlabeled_predictions/predictions.csv', help='Path to predictions CSV')
     parser.add_argument('--data_path', type=str, default='data/cluster_data', help='path to test data')
     parser.add_argument('--frame', type=int, help='Specific frame to start with (optional)')
     args = parser.parse_args()
