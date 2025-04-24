@@ -122,7 +122,7 @@ def visualize_frames(frames, split_name=None):
             print(f"Progress: {frame_num}/{len(frames)-1}")
             
             view_control = vis.get_view_control()
-            front = [1, -1, 0]
+            front = [1, -1, 0.5]
             up = [0, 0, 1]
             view_control.set_front(front)
             view_control.set_up(up)
