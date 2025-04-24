@@ -20,7 +20,7 @@ def parse_args():
     parser.add_argument('--cfg', type=str, default='pointnext/cfgs/pointnext-s.yaml', help='config file')
     parser.add_argument('--checkpoint', type=str, help='checkpoint path')
     parser.add_argument('--data_path', type=str, default='data/cluster_data', help='path to test data')
-    parser.add_argument('--output', type=str, default='predictions.csv', help='output file')
+    parser.add_argument('--output', type=str, default='log/unlabeled_predictions/predictions.csv', help='output file')
     parser.add_argument('--batch_size', type=int, default=4, help='batch size for inference')
     args = parser.parse_args()
     return args
