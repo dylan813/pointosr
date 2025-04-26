@@ -11,11 +11,12 @@ from sklearn.metrics import accuracy_score
 import matplotlib.pyplot as plt
 import yaml
 from easydict import EasyDict as edict
+import pandas as pd
 
 # Add the parent directory to the path to import from point_osr
 sys.path.append(str(Path(__file__).parent.parent))
 
-from dataset.build import build_dataloader_from_cfg
+from pointnext.dataset.build import build_dataloader_from_cfg
 from model.pointnext_wrapper import PointNeXtFeatureExtractor
 
 class OSRClassifier:
@@ -393,12 +394,21 @@ def main():
         pickle.dump(metrics, f)
     print(f"Saved metrics to {metrics_path}")
 
-    # Save predictions if needed (optional)
-    # preds_path = os.path.join(args.output_dir, 'predictions.pkl')
-    # pred_labels, _ = classifier.batch_classify(test_features) # Re-classify to get labels if needed elsewhere
-    # with open(preds_path, 'wb') as f:
-    #     pickle.dump({'true_labels': test_labels, 'predicted_labels': pred_labels}, f)
-    # print(f"Saved predictions to {preds_path}")
+    # --- Save Predictions to CSV ---
+    print("\nSaving predictions to CSV...")
+    pred_labels, _ = classifier.batch_classify(test_features) # Get predictions
+    df = pd.DataFrame({
+        'true_label': test_labels,
+        'predicted_label': pred_labels
+    })
+    
+    # Define CSV filename based on whether features were precomputed or extracted on the fly
+    csv_filename = f'predictions_{args.eval_split}.csv' if not args.test_features else 'predictions_precomputed.csv'
+    csv_path = os.path.join(args.output_dir, csv_filename)
+    
+    df.to_csv(csv_path, index=False) # Save to CSV
+    print(f"Saved predictions (true vs predicted) to {csv_path}")
+    # --- End Save Predictions ---
 
 if __name__ == "__main__":
     main() 

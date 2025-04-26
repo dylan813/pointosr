@@ -7,8 +7,8 @@ import sys
 
 # Add the parent directory to the path to import from point_osr
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from model.build import build_model_from_cfg
-from model.classification.cls_base import BaseCls
+from pointnext.model.build import build_model_from_cfg
+from pointnext.model.classification.cls_base import BaseCls
 
 class PointNeXtFeatureExtractor(nn.Module):
     """Wrapper around PointNeXt model to extract penultimate layer features for OSR.

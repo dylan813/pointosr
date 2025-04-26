@@ -13,7 +13,7 @@ from easydict import EasyDict as edict
 # Add the parent directory to the path to import from point_osr
 sys.path.append(str(Path(__file__).parent.parent))
 
-from dataset.build import build_dataloader_from_cfg
+from pointnext.dataset.build import build_dataloader_from_cfg
 from model.pointnext_wrapper import PointNeXtFeatureExtractor
 
 def extract_and_save_features(model, data_loader, save_dir, subset_name="train"):
@@ -99,13 +99,6 @@ def main():
     # Load configurations
     model_config = load_config(args.cfg)
     data_config = load_config(args.data_cfg)
-    
-    # --- Combine configs if necessary (example assumes simple merge, adjust if needed) ---
-    # If model config needs parts of data config or vice-versa, merge them here.
-    # For now, assume model_config.model and data_config sections are sufficient.
-    # config = edict({**model_config, **data_config}) # Example merge
-    # For clarity, we'll use model_config and data_config directly
-    
     # Build model
     # Assuming model definition is in model_config (e.g., args.cfg like pointnext-s.yaml)
     model = PointNeXtFeatureExtractor(model_cfg=model_config.model, pretrained_path=args.pretrained)
