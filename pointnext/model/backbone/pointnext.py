@@ -269,8 +269,16 @@ class InvResMLP(nn.Module):
         p, f = pf
         identity = f
         f = self.convs([p, f])
-        f = self.pwconv(f)
-        if f.shape[-1] == identity.shape[-1] and self.use_res:
+
+        # Transpose features for Conv1d
+        f = f.transpose(1, 2).contiguous() # Now (B, C, N)
+
+        f = self.pwconv(f)     # Apply point-wise conv blocks
+
+        # Transpose back for residual connection and consistency
+        f = f.transpose(1, 2).contiguous() # Back to (B, N, C)
+
+        if f.shape[-1] == identity.shape[-1] and self.use_res: # Compare C dimension
             f += identity
         f = self.act(f)
         return [p, f]
@@ -433,12 +441,26 @@ class PointNextEncoder(nn.Module):
 
     def forward_cls_feat(self, p0, f0=None):
         if hasattr(p0, 'keys'):
-            p0, f0 = p0['pos'], p0.get('x', None)
-        if f0 is None:
-            f0 = p0.clone().transpose(1, 2).contiguous()
+            p_in, f_in = p0['pos'], p0.get('x', None) # Use temporary names
+        else: # Allow passing tensors directly?
+            p_in, f_in = p0, f0
+
+        if f_in is None:
+            # Use position as initial feature if 'x' is not provided
+            f_prepared = p_in.clone().transpose(1, 2).contiguous() # (B, 3, N)
+        else:
+            # Use provided features 'x', but transpose them
+            f_prepared = f_in.transpose(1, 2).contiguous() # (B, C_in, N)
+
+        # Assign p0 for the loop
+        p0_loop = p_in # (B, N, 3)
+        # Assign f0 for the loop
+        f0_loop = f_prepared # Now guaranteed to be (B, C, N)
+
         for i in range(0, len(self.encoder)):
-            p0, f0 = self.encoder[i]([p0, f0])
-        return f0.squeeze(-1)
+            p0_loop, f0_loop = self.encoder[i]([p0_loop, f0_loop])
+        # Assuming the final output f0 is (B, C_out, 1) for classification
+        return f0_loop.squeeze(-1) # Squeeze the last dim -> (B, C_out)
 
     def forward_seg_feat(self, p0, f0=None):
         if hasattr(p0, 'keys'):

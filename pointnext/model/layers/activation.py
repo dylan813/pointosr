@@ -43,7 +43,7 @@ def create_act(act_args):
         assert act in _ACT_LAYER.keys(), f"input {act} is not supported"
         act_layer = _ACT_LAYER[act]
 
-    inplace = act_args.pop('inplace', True)
+    inplace = act_args.get('inplace', True)
 
     if act not in ['gelu', 'sigmoid']: # TODO: add others
         return act_layer(inplace=inplace, **act_args)
