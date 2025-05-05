@@ -10,6 +10,6 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package()
 
 catkin_install_python(PROGRAMS
-  scripts/my_node.py
+  scripts/classification_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
