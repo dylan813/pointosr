@@ -10,6 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package()
 
 catkin_install_python(PROGRAMS
-  scripts/classification_node.py
+  scripts/test_classification_node.py
+  scripts/count_clusters.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
