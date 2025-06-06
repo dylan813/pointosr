@@ -10,7 +10,12 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package()
 
 catkin_install_python(PROGRAMS
-  scripts/test_classification_node.py
   scripts/count_clusters.py
+  scripts/update_val_batch_size.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(PROGRAMS
+  scripts/inference.sh
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
