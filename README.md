@@ -1,7 +1,5 @@
 # Point Cloud Open Set Recognition
 
-This repository implements an open set recognition method for 3D point cloud data.
-
 ## Installation
 
 ```bash
