@@ -19,8 +19,9 @@ pip install torch-scatter -f https://data.pyg.org/whl/torch-2.1.0+cu121.html
 pip install -r requirements.txt
 ```
 add these later:
-pip install rospkg
-pip install catkin_pkg pyyaml
+- pip install rospkg
+- pip install catkin_pkg pyyaml
+- also need ros-numpy
 
 ```bash
 conda install -c -y conda-forge gcc_linux-64=12 gxx_linux-64=12
