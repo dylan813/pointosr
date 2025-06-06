@@ -3,6 +3,8 @@ project(pointosr)
 
 find_package(catkin REQUIRED)
 
+catkin_python_setup()
+
 catkin_package()
 
 find_program(PYTHON_EXECUTABLE python)
