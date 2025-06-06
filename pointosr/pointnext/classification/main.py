@@ -6,7 +6,7 @@ from pointnext.utils import EasyConfig, dist_utils, find_free_port, generate_exp
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser('S3DIS scene segmentation training')
+    parser = argparse.ArgumentParser('PointNext Classification')
     parser.add_argument('--cfg', type=str, required=True, help='config file')
     parser.add_argument('--profile', action='store_true', default=False, help='set to True to profile speed')
     args, opts = parser.parse_known_args()
