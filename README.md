@@ -18,7 +18,7 @@ pip install torch-scatter -f https://data.pyg.org/whl/torch-2.1.0+cu121.html
 
 pip install -r requirements.txt
 ```
-add these later:
+add these later to requirements.txt:
 - pip install rospkg
 - pip install catkin_pkg pyyaml
 - also need ros-numpy
