@@ -23,13 +23,6 @@ add these later to requirements.txt:
 - pip install catkin_pkg pyyaml
 - also need ros-numpy
 
-unsure if these are needed; something weird happened with multiplexer
-- pip install h5py
-- pip install easydict
-- pip install multimethod
-- pip install termcolor
-- pip install shortuuid
-
 ```bash
 conda install -c -y conda-forge gcc_linux-64=12 gxx_linux-64=12
 
