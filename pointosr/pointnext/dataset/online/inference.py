@@ -61,6 +61,13 @@ class PointCloudProcessor:
         pos = torch.from_numpy(sampled_points[:, :3]).float()
         intensity = torch.from_numpy(sampled_points[:, 3:]).float()
 
+        # Center the point cloud
+        pos = pos - torch.mean(pos, axis=0, keepdims=True)
+
+        # Normalize the point cloud
+        m = torch.max(torch.sqrt(torch.sum(pos ** 2, axis=-1, keepdims=True)), axis=0, keepdims=True)[0]
+        pos = pos / m
+
         data = {
             'pos': pos,
             'x': torch.cat((pos, intensity), dim=1)
