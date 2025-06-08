@@ -14,16 +14,18 @@ class PointCloudProcessor:
     to be fed into a PointNet-like model. It handles sampling to a fixed
     number of points and formatting the data into tensors.
     """
-    def __init__(self, num_points=2048, device='cuda'):
+    def __init__(self, num_points=2048, device='cuda', transform=None):
         """
         Initializes the processor.
         
         Args:
             num_points (int): The target number of points to sample.
             device (str): The device to use for processing ('cuda' or 'cpu').
+            transform (callable, optional): A transform pipeline to apply to the data.
         """
         self.num_points = num_points
         self.device = torch.device(device)
+        self.transform = transform
 
     def process(self, points, identifier=None):
         """
@@ -57,15 +59,22 @@ class PointCloudProcessor:
         else:
             sampled_points = points
 
-        # Separate position and features, and convert to tensors.
         pos = torch.from_numpy(sampled_points[:, :3]).float()
         intensity = torch.from_numpy(sampled_points[:, 3:]).float()
 
         data = {
             'pos': pos,
+            'y': torch.tensor(0).long(), # Dummy label, required by some transforms
             'x': torch.cat((pos, intensity), dim=1)
         }
+
+        # Apply the same transformations used during training/validation
+        if self.transform:
+            data = self.transform(data)
         
+        # Remove dummy label after transforms
+        data.pop('y', None)
+
         if identifier is not None:
             data['id'] = identifier
             

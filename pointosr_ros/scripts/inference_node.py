@@ -1,187 +1,118 @@
 #!/usr/bin/env python3
 import rospy
-from sensor_msgs.msg import PointCloud2
-from std_msgs.msg import String # To publish the result
+from std_msgs.msg import String
 import numpy as np
 import torch
-import yaml
-import message_filters # For synchronizing topics
+import sys
+import os
+from sensor_msgs.msg import PointCloud2
+from visualization_msgs.msg import Marker, MarkerArray
+from pointosr_ros.msg import PointCloud2Array
+from pointosr.core.inference import PointOSRInference
+from pointosr.core.processor import PointCloudProcessor
 
-# It's good practice to add a try-except block for ROS imports
-# to allow the script to be run without a ROS environment for testing.
 try:
     import ros_numpy
-    # Assuming your workspace is sourced, these imports should work.
-    from pointnext.dataset.online.inference import PointCloudProcessor
-    from pointnext.utils import EasyConfig, load_checkpoint
-    from pointnext.model import build_model_from_cfg
-    from pointnext.dataset.human.human import HumanDataset # To get class names
 except ImportError as e:
     print(f"Error: Could not import required modules. Make sure your ROS workspace is sourced and all dependencies are installed. Details: {e}")
     exit(1)
 
-
 class InferenceNode:
     """
-    A ROS node for running live point cloud inference with PointNext on multiple topics.
+    A ROS node for running point cloud inference.
+    It subscribes to an aggregated topic of point clouds, processes them in a batch,
+    and publishes the classification results.
     """
     def __init__(self):
-        rospy.init_node('pointcloud_inference_node')
-        
+        rospy.init_node('pointosr_live_inference')
+
         # --- Parameters ---
-        # Get parameters from the ROS parameter server, with defaults
-        input_topic_prefix = rospy.get_param('~input_topic_prefix', '/cluster_')
-        output_topic_suffix = rospy.get_param('~output_topic_suffix', '/class')
         cfg_path = rospy.get_param('~cfg_path', 'path/to/your/config.yaml')
         model_path = rospy.get_param('~model_path', 'path/to/your/model.pth')
+        input_topic = rospy.get_param('~input_topic', '/clusters_aggregated')
         num_points = rospy.get_param('~num_points', 2048)
         self.device = rospy.get_param('~device', 'cuda')
 
-        # --- Discover topics ---
-        rospy.loginfo("Searching for topics...")
-        # A short delay can help ensure all topics are discovered after connecting to master.
-        rospy.sleep(2.0)
-        all_topics = rospy.get_published_topics()
-        self.input_topics = sorted([
-            topic for topic, msg_type in all_topics 
-            if topic.startswith(input_topic_prefix) and msg_type == 'sensor_msgs/PointCloud2'
-        ])
+        # --- Publishers ---
+        self.marker_publisher = rospy.Publisher('/classification_markers', MarkerArray, queue_size=10)
 
-        if not self.input_topics:
-            rospy.logfatal(f"No topics found with prefix '{input_topic_prefix}'. Shutting down.")
-            rospy.signal_shutdown("No input topics found.")
-            return
-            
-        rospy.loginfo(f"Found {len(self.input_topics)} topics: {self.input_topics}")
-        
-        # --- Initialization ---
-        self.processor = PointCloudProcessor(num_points=num_points, device=self.device)
-        rospy.loginfo(f"PointCloud processor initialized for {num_points} points on device '{self.device}'.")
-
-        # --- Load Config and Model ---
+        # --- Load Model ---
         try:
-            cfg = EasyConfig()
-            cfg.load(cfg_path, recursive=True)
-            # cfg.update(rospy.get_param_names()) # This is too broad and can cause conflicts.
-            
-            # More safely, get only the parameters for this node.
-            # ROS launch files put params in a private namespace.
-            node_params = rospy.get_param('~')
-            cfg.update(node_params)
-
-            # Build the model from the configuration file
-            self.model = build_model_from_cfg(cfg.model).to(self.device)
-            
-            # Load the trained weights
-            load_checkpoint(self.model, pretrained_path=model_path)
-            self.model.eval() # Set the model to evaluation mode
-            
+            self.model_inference = PointOSRInference(cfg_path, model_path, device=self.device)
+            self.processor = PointCloudProcessor(num_points=num_points)
             rospy.loginfo(f"Model loaded successfully from {model_path}.")
-
-            # Store class names for publishing
-            self.class_names = cfg.get('classes', HumanDataset.classes) # Fallback to HumanDataset.classes
-            rospy.loginfo(f"Using class names: {self.class_names}")
-
+            rospy.loginfo(f"Using class names: {self.model_inference.class_names}")
         except Exception as e:
             rospy.logerr(f"Failed to load model or config. Shutting down. Error: {e}")
-            rospy.signal_shutdown(f"Model loading failed: {e}")
             return
 
-        # --- Publisher and Subscriber ---
-        self.result_publishers = {
-            topic: rospy.Publisher(topic + output_topic_suffix, String, queue_size=10)
-            for topic in self.input_topics
-        }
-
-        subscribers = [message_filters.Subscriber(topic, PointCloud2) for topic in self.input_topics]
-        
-        # Synchronize topics by approximate timestamp
-        # slop: allowed time difference between messages
-        self.time_synchronizer = message_filters.ApproximateTimeSynchronizer(
-            subscribers,
-            queue_size=10,
-            slop=0.2 # 200ms tolerance, adjust as needed
+        # --- Subscriber ---
+        self.subscriber = rospy.Subscriber(
+            input_topic,
+            PointCloud2Array,
+            self.process_batch,
+            queue_size=2,
+            buff_size=2**24  # 24MB buffer
         )
-        self.time_synchronizer.registerCallback(self.pointcloud_callback)
+        rospy.loginfo(f"Subscribed to aggregated topic: {input_topic}")
 
-        rospy.loginfo(f"Synchronizing {len(self.input_topics)} topics. Publishing results with suffix '{output_topic_suffix}'")
+    def get_cloud_center(self, cloud_array):
+        """Calculates the geometric center of a point cloud."""
+        return np.mean(cloud_array, axis=0)
 
-
-    def pointcloud_callback(self, *msgs):
-        """
-        Callback for synchronized point clouds. Processes a batch.
-        """
-        if not msgs:
+    def process_batch(self, msg: PointCloud2Array):
+        if not msg.clouds:
             return
 
-        rospy.loginfo_throttle(1.0, f"Received a synchronized batch of {len(msgs)} point clouds.")
-        
-        batch_pos = []
-        batch_x = []
-        identifiers = []
-        # The order of messages corresponds to the order of topics in self.input_topics
-        
-        try:
-            for i, msg in enumerate(msgs):
-                topic_name = self.input_topics[i]
-                
-                # 1. Convert PointCloud2 to a NumPy array
-                pc_data = ros_numpy.numpify(msg)
-                points = np.zeros((len(pc_data), 4), dtype=np.float32)
-                points[:, 0] = pc_data['x']
-                points[:, 1] = pc_data['y']
-                points[:, 2] = pc_data['z']
-                points[:, 3] = pc_data['intensity']
-                points = points[np.isfinite(points).all(axis=1)]
+        batch_points = []
+        original_clouds = []
+        for cloud_msg in msg.clouds:
+            # Convert ROS PointCloud2 to numpy array
+            points = np.frombuffer(cloud_msg.data, dtype=np.float32).reshape(-1, 3)
+            # Pre-process for the model (e.g., center, normalize, sample)
+            processed_points, _ = self.processor.process(points)
+            batch_points.append(processed_points)
+            original_clouds.append((points, cloud_msg.header)) # Keep the header
 
-                if points.shape[0] == 0:
-                    rospy.logwarn(f"Received empty point cloud on {topic_name}. Skipping entire batch.")
-                    return
+        # Stack into a single tensor for batch inference
+        batch_tensor = torch.from_numpy(np.array(batch_points)).to(self.device)
 
-                # 2. Process the point cloud (sampling, etc.)
-                identifier = msg.header.stamp.to_sec()
-                data = self.processor.process(points, identifier=identifier)
+        # --- Run Inference ---
+        predictions = self.model_inference.predict(batch_tensor)
 
-                batch_pos.append(data['pos'])
-                batch_x.append(data['x'])
-                identifiers.append(identifier)
-
-            if not batch_pos:
-                return # All point clouds in batch were empty
-
-            # 3. Stack tensors to create a batch for the model
-            pos_tensor = torch.stack(batch_pos, dim=0).to(self.device)
-            x_tensor = torch.stack(batch_x, dim=0).to(self.device)
-
-            model_data = {
-                'pos': pos_tensor,
-                'x': x_tensor.transpose(1, 2) # Model expects (B, C, N)
-            }
+        # --- Publish Visualizations ---
+        marker_array = MarkerArray()
+        for i, (pred_label, (original_cloud, original_header)) in enumerate(zip(predictions, original_clouds)):
+            center = self.get_cloud_center(original_cloud)
             
-            # 4. Run inference
-            with torch.no_grad():
-                logits = self.model(model_data)
-                pred_indices = torch.argmax(logits, dim=1)
-                
-                # 5. Publish results for each point cloud in the batch
-                for i in range(pred_indices.shape[0]):
-                    pred_class_idx = pred_indices[i].item()
-                    class_name = self.class_names[pred_class_idx]
-                    topic_name = self.input_topics[i]
-                    identifier = identifiers[i]
-                    
-                    rospy.loginfo_throttle(1.0, f"Prediction on {topic_name} (frame {identifier}): '{class_name}'")
-                    
-                    publisher = self.result_publishers[topic_name]
-                    publisher.publish(String(data=class_name))
+            marker = Marker()
+            marker.header = original_header # Use the header from the original cloud
+            marker.header.stamp = rospy.Time.now() # Update timestamp to now
+            marker.ns = "classification"
+            marker.id = i
+            marker.type = Marker.TEXT_VIEW_FACING
+            marker.action = Marker.ADD
+            marker.pose.position.x = center[0]
+            marker.pose.position.y = center[1]
+            marker.pose.position.z = center[2] + 0.5  # Offset text above the cloud
+            marker.pose.orientation.w = 1.0
+            marker.scale.z = 0.5  # Text size
+            marker.color.a = 1.0  # Must be non-zero
+            marker.color.r = 1.0
+            marker.color.g = 1.0
+            marker.color.b = 1.0
+            marker.text = pred_label
+            marker.lifetime = rospy.Duration(0.5) # How long the marker persists
+            marker_array.markers.append(marker)
 
-        except Exception as e:
-            rospy.logerr(f"Error processing point cloud batch: {e}")
+            rospy.loginfo(f"Cloud {i} ({msg.topic_names[i]}): Classified as '{pred_label}' in frame '{original_header.frame_id}'")
+
+        if marker_array.markers:
+            self.marker_publisher.publish(marker_array)
 
 if __name__ == '__main__':
     try:
-        # We need to create the class instance to start the node
-        inference_node = InferenceNode()
+        InferenceNode()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass

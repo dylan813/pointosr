@@ -9,16 +9,35 @@
 
         Parameters for the model config and pretrained weights are set below.
     -->
-    <arg name="cfg_path" default="$(find pointosr)/pointnext/cfgs/pointnext-s.yaml" />
-    <arg name="model_path" default="/home/cerlab/Documents/data/pointosr/pointosr_log/cfgs/bs32_vbs4/checkpoint/cfgs-train-pointnext-s-ngpus1-seed6126-20250418-012725-cJ8XQUbkLJotEiCEfg37Pm_ckpt_best.pth" />
+    <arg name="cfg_path" default="$(env HOME)/Documents/data/pointosr/pointosr_log/cfgs/bs32_vbs4/config.yaml" />
+    <arg name="model_path" default="$(env HOME)/Documents/data/pointosr/pointosr_log/cfgs/bs32_vbs4/checkpoint/cfgs-train-pointnext-s-ngpus1-seed6126-20250418-012725-cJ8XQUbkLJotEiCEfg37Pm_ckpt_best.pth" />
     <arg name="input_prefix" default="/cluster_" />
+    <arg name="aggregated_topic" default="/clusters_aggregated" />
     <arg name="num_points" default="2048" />
     <arg name="device" default="cuda" />
 
-    <node name="pointosr_live_inference" pkg="pointosr_ros" type="inference_node.py" output="screen">
+    <!-- Dynamically multiplexes point clouds and runs inference -->
+    <node name="pointcloud_multiplexer_node" pkg="pointosr_ros" type="multiplexer_node.py" output="screen">
+        <!-- The prefix for input topics to discover (e.g., /cluster_ for /cluster_0, /cluster_1, etc.) -->
+        <param name="input_topic_prefix" value="/cluster_" />
+        <!-- The topic to publish the aggregated PointCloud2Array messages on -->
+        <param name="output_topic" value="/clusters_aggregated" />
+        <!-- How often to publish aggregated frames, in Hz. -->
+        <param name="publish_frequency" value="20.0" />
+        <!-- How often to check for new/removed topics, in Hz. -->
+        <param name="discovery_frequency" value="1.0" />
+        <!-- How long to keep a message in a buffer before it's considered stale, in seconds. -->
+        <!-- This prevents memory leaks from incomplete frames. -->
+        <param name="max_buffer_age_secs" value="2.0" />
+    </node>
+
+    <!-- Inference Node: Subscribes to the aggregated stream -->
+    <node name="inference_node" pkg="pointosr_ros" type="inference_node.py" output="screen">
+        <!-- Subscribe to the single, stable topic from the multiplexer -->
+        <param name="input_topic" value="/clusters_aggregated" />
+        <!-- Model and Config paths -->
         <param name="cfg_path" value="$(arg cfg_path)" />
         <param name="model_path" value="$(arg model_path)" />
-        <param name="input_topic_prefix" value="$(arg input_prefix)" />
         <param name="num_points" value="$(arg num_points)" />
         <param name="device" value="$(arg device)" />
     </node>
