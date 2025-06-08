@@ -1,8 +1,0 @@
-<launch>
-    <!-- Launch the count_clusters node -->
-    <node name="count_clusters" pkg="pointosr_ros" type="count_clusters.py" output="screen" />
-
-    <!-- Add other nodes here -->
-    <!-- Example: -->
-    <!-- <node name="other_node" pkg="your_package" type="your_node_executable" output="screen" /> -->
-</launch>
