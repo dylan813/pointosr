@@ -14,8 +14,8 @@
     <arg name="input_prefix" default="/cluster_" />
     <arg name="num_points" default="2048" />
     <arg name="device" default="cuda" />
-    <arg name="sync_slop" default="0.2" />
-    <arg name="topic_check_period" default="5.0" />
+    <arg name="max_cluster_topics" default="30" />
+    <arg name="trigger_topic" default="/motion_detector/segmentation_done" />
 
     <node name="pointosr_live_inference" pkg="pointosr_ros" type="inference_node.py" output="screen">
         <param name="cfg_path" value="$(arg cfg_path)" />
@@ -23,7 +23,7 @@
         <param name="input_topic_prefix" value="$(arg input_prefix)" />
         <param name="num_points" value="$(arg num_points)" />
         <param name="device" value="$(arg device)" />
-        <param name="sync_slop" value="$(arg sync_slop)" />
-        <param name="topic_check_period" value="$(arg topic_check_period)" />
+        <param name="max_cluster_topics" value="$(arg max_cluster_topics)" />
+        <param name="trigger_topic" value="$(arg trigger_topic)" />
     </node>
 </launch> 
