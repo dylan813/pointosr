@@ -25,6 +25,7 @@ add these later to requirements.txt:
 - pip install h5py
 - pip install easydict
 - pip install multimethod
+- pip install termcolor
 
 ```bash
 conda install -c -y conda-forge gcc_linux-64=12 gxx_linux-64=12
