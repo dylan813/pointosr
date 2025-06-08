@@ -29,31 +29,15 @@ class InferenceNode:
         rospy.init_node('pointcloud_inference_node')
         
         # --- Parameters ---
-        # Get parameters from the ROS parameter server, with defaults
-        input_topic_prefix = rospy.get_param('~input_topic_prefix', '/cluster_')
-        output_topic_suffix = rospy.get_param('~output_topic_suffix', '/class')
+        self.input_topic_prefix = rospy.get_param('~input_topic_prefix', '/cluster_')
+        self.output_topic_suffix = rospy.get_param('~output_topic_suffix', '/class')
         cfg_path = rospy.get_param('~cfg_path', 'path/to/your/config.yaml')
         model_path = rospy.get_param('~model_path', 'path/to/your/model.pth')
         num_points = rospy.get_param('~num_points', 2048)
         self.device = rospy.get_param('~device', 'cuda')
+        self.topic_check_period = rospy.get_param('~topic_check_period', 5.0) # Check every 5 seconds
+        self.sync_slop = rospy.get_param('~sync_slop', 0.2) # Synchronization tolerance in seconds
 
-        # --- Discover topics ---
-        rospy.loginfo("Searching for topics...")
-        # A short delay can help ensure all topics are discovered after connecting to master.
-        rospy.sleep(2.0)
-        all_topics = rospy.get_published_topics()
-        self.input_topics = sorted([
-            topic for topic, msg_type in all_topics 
-            if topic.startswith(input_topic_prefix) and msg_type == 'sensor_msgs/PointCloud2'
-        ])
-
-        if not self.input_topics:
-            rospy.logfatal(f"No topics found with prefix '{input_topic_prefix}'. Shutting down.")
-            rospy.signal_shutdown("No input topics found.")
-            return
-            
-        rospy.loginfo(f"Found {len(self.input_topics)} topics: {self.input_topics}")
-        
         # --- Initialization ---
         self.processor = PointCloudProcessor(num_points=num_points, device=self.device)
         rospy.loginfo(f"PointCloud processor initialized for {num_points} points on device '{self.device}'.")
@@ -62,24 +46,15 @@ class InferenceNode:
         try:
             cfg = EasyConfig()
             cfg.load(cfg_path, recursive=True)
-            # cfg.update(rospy.get_param_names()) # This is too broad and can cause conflicts.
-            
-            # More safely, get only the parameters for this node.
-            # ROS launch files put params in a private namespace.
             node_params = rospy.get_param('~')
             cfg.update(node_params)
 
-            # Build the model from the configuration file
             self.model = build_model_from_cfg(cfg.model).to(self.device)
-            
-            # Load the trained weights
             load_checkpoint(self.model, pretrained_path=model_path)
-            self.model.eval() # Set the model to evaluation mode
+            self.model.eval()
             
             rospy.loginfo(f"Model loaded successfully from {model_path}.")
-
-            # Store class names for publishing
-            self.class_names = cfg.get('classes', HumanDataset.classes) # Fallback to HumanDataset.classes
+            self.class_names = cfg.get('classes', HumanDataset.classes)
             rospy.loginfo(f"Using class names: {self.class_names}")
 
         except Exception as e:
@@ -87,30 +62,74 @@ class InferenceNode:
             rospy.signal_shutdown(f"Model loading failed: {e}")
             return
 
-        # --- Publisher and Subscriber ---
-        self.result_publishers = {
-            topic: rospy.Publisher(topic + output_topic_suffix, String, queue_size=10)
-            for topic in self.input_topics
-        }
+        # --- Dynamic Topic Management ---
+        self.input_topics = []
+        self.subscribers = [] # Must hold a reference to subscribers
+        self.result_publishers = {}
+        self.time_synchronizer = None
 
-        subscribers = [message_filters.Subscriber(topic, PointCloud2) for topic in self.input_topics]
+        # Call once to initialize, then set up a timer for periodic checks
+        self.update_topics() 
+        rospy.Timer(rospy.Duration(self.topic_check_period), self.update_topics)
+        rospy.loginfo(f"Node initialized. Will check for topics with prefix '{self.input_topic_prefix}' every {self.topic_check_period} seconds.")
+
+    def update_topics(self, event=None):
+        """
+        Periodically checks for new topics and reconfigures subscribers.
+        This makes the node dynamic, allowing it to adapt to topics that
+        appear or disappear during runtime.
+        """
+        try:
+            all_topics = rospy.get_published_topics()
+        except rospy.ROSException:
+            rospy.logwarn("Could not get published topics. Is master available?")
+            return
+
+        current_topics = sorted([
+            topic for topic, msg_type in all_topics 
+            if topic.startswith(self.input_topic_prefix) and msg_type == 'sensor_msgs/PointCloud2'
+        ])
+
+        if set(current_topics) == set(self.input_topics):
+            return
+
+        rospy.loginfo(f"Topic change detected. Old: {self.input_topics}, New: {current_topics}")
+        self.input_topics = current_topics
+
+        if not self.input_topics:
+            rospy.logwarn_throttle(30, f"No topics found with prefix '{self.input_topic_prefix}'. Will keep searching.")
+            self.subscribers.clear()
+            self.time_synchronizer = None
+            return
+
+        for topic in self.input_topics:
+            if topic not in self.result_publishers:
+                publisher_topic = topic + self.output_topic_suffix
+                self.result_publishers[topic] = rospy.Publisher(publisher_topic, String, queue_size=10)
+                rospy.loginfo(f"Created publisher for new topic: {publisher_topic}")
+
+        # Re-create subscribers and synchronizer
+        self.subscribers = [message_filters.Subscriber(topic, PointCloud2) for topic in self.input_topics]
         
-        # Synchronize topics by approximate timestamp
-        # slop: allowed time difference between messages
         self.time_synchronizer = message_filters.ApproximateTimeSynchronizer(
-            subscribers,
+            self.subscribers,
             queue_size=10,
-            slop=0.2 # 200ms tolerance, adjust as needed
+            slop=self.sync_slop
         )
-        self.time_synchronizer.registerCallback(self.pointcloud_callback)
+        # Pass a copy of the topics list to the callback to prevent race conditions.
+        self.time_synchronizer.registerCallback(self.pointcloud_callback, list(self.input_topics))
 
-        rospy.loginfo(f"Synchronizing {len(self.input_topics)} topics. Publishing results with suffix '{output_topic_suffix}'")
+        rospy.loginfo(f"Now synchronizing {len(self.input_topics)} topics. Publishing results with suffix '{self.output_topic_suffix}'")
 
-
-    def pointcloud_callback(self, *msgs):
+    def pointcloud_callback(self, *args):
         """
         Callback for synchronized point clouds. Processes a batch.
+        The topic list is passed as the last argument to avoid race conditions.
         """
+        # Extract the topic list and the messages from the arguments
+        topic_list = args[-1]
+        msgs = args[:-1]
+
         if not msgs:
             return
 
@@ -118,12 +137,10 @@ class InferenceNode:
         
         batch_pos = []
         batch_x = []
-        identifiers = []
-        # The order of messages corresponds to the order of topics in self.input_topics
         
         try:
             for i, msg in enumerate(msgs):
-                topic_name = self.input_topics[i]
+                topic_name = topic_list[i]
                 
                 # 1. Convert PointCloud2 to a NumPy array
                 pc_data = ros_numpy.numpify(msg)
@@ -139,12 +156,10 @@ class InferenceNode:
                     return
 
                 # 2. Process the point cloud (sampling, etc.)
-                identifier = msg.header.stamp.to_sec()
-                data = self.processor.process(points, identifier=identifier)
+                data = self.processor.process(points)
 
                 batch_pos.append(data['pos'])
                 batch_x.append(data['x'])
-                identifiers.append(identifier)
 
             if not batch_pos:
                 return # All point clouds in batch were empty
@@ -164,16 +179,19 @@ class InferenceNode:
                 pred_indices = torch.argmax(logits, dim=1)
                 
                 # 5. Publish results for each point cloud in the batch
+                predictions_log = []
                 for i in range(pred_indices.shape[0]):
                     pred_class_idx = pred_indices[i].item()
                     class_name = self.class_names[pred_class_idx]
-                    topic_name = self.input_topics[i]
-                    identifier = identifiers[i]
-                    
-                    rospy.loginfo_throttle(1.0, f"Prediction on {topic_name} (frame {identifier}): '{class_name}'")
+                    topic_name = topic_list[i]
                     
                     publisher = self.result_publishers[topic_name]
                     publisher.publish(String(data=class_name))
+
+                    predictions_log.append(f"{topic_name}: '{class_name}'")
+                
+                if predictions_log:
+                    rospy.loginfo_throttle(1.0, f"Batch Predictions: {'; '.join(predictions_log)}")
 
         except Exception as e:
             rospy.logerr(f"Error processing point cloud batch: {e}")
