@@ -24,6 +24,7 @@ add these later to requirements.txt:
 - also need ros-numpy
 - pip install h5py
 - pip install easydict
+- pip install multimethod
 
 ```bash
 conda install -c -y conda-forge gcc_linux-64=12 gxx_linux-64=12
