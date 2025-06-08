@@ -34,7 +34,7 @@ class InferenceNode:
         num_points = rospy.get_param('~num_points', 2048)
         self.device = rospy.get_param('~device', 'cuda')
         max_cluster_topics = rospy.get_param('~max_cluster_topics', 30)
-        trigger_topic = rospy.get_param('~trigger_topic', '/motion_detector/segmentation_done')
+        trigger_topic = rospy.get_param('~trigger_topic', '/motion_detector/cluster_batch')
         self.buffer_timeout = rospy.get_param('~buffer_timeout', 2.0) # Seconds to keep stale frames
 
         self.processor = PointCloudProcessor(num_points=num_points, device=self.device)
