@@ -23,6 +23,7 @@ add these later to requirements.txt:
 - pip install catkin_pkg pyyaml
 - also need ros-numpy
 - pip install h5py
+- pip install easydict
 
 ```bash
 conda install -c -y conda-forge gcc_linux-64=12 gxx_linux-64=12
