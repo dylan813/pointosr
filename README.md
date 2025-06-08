@@ -22,6 +22,8 @@ add these later to requirements.txt:
 - pip install rospkg
 - pip install catkin_pkg pyyaml
 - also need ros-numpy
+
+unsure if these are needed; something weird happened with multiplexer
 - pip install h5py
 - pip install easydict
 - pip install multimethod
