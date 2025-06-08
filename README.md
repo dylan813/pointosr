@@ -26,6 +26,7 @@ add these later to requirements.txt:
 - pip install easydict
 - pip install multimethod
 - pip install termcolor
+- pip install shortuuid
 
 ```bash
 conda install -c -y conda-forge gcc_linux-64=12 gxx_linux-64=12
