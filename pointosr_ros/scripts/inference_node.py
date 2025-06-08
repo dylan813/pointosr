@@ -130,6 +130,10 @@ class InferenceNode:
         topic_list = args[-1]
         msgs = args[:-1]
 
+        if len(msgs) != len(topic_list):
+            rospy.logwarn_throttle(5.0, f"Mismatch between message count ({len(msgs)}) and topic count ({len(topic_list)}). This can happen during topic changes. Skipping batch.")
+            return
+
         if not msgs:
             return
 
