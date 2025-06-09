@@ -3,7 +3,13 @@ import numpy as np
 from pointnext.model.layers.subsample import fps
 
 
-class PointCloudProcessor:
+class OnlineDataloader:
+    # add classes used in training
+    classes = [
+        "human",
+        "false"
+    ]
+
     def __init__(self, num_points=2048, device='cuda'):
         self.num_points = num_points
         self.device = torch.device(device)
