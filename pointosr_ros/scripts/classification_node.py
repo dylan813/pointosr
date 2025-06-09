@@ -18,14 +18,14 @@ except ImportError as e:
     print(f"Error: Could not import required modules. Details: {e}")
     exit(1)
 
-class InferenceNode:
+class ClassificationNode:
     """
     A ROS node for point cloud inference, synchronized by a trigger topic
     that specifies the exact number of messages per frame. This provides a
     robust, event-driven alternative to time-based synchronization.
     """
     def __init__(self):
-        rospy.init_node('pointcloud_inference_node')
+        rospy.init_node('pointcloud_classification_node')
 
         self.input_topic_prefix = rospy.get_param('~input_topic_prefix', '/cluster_')
         self.output_topic_suffix = rospy.get_param('~output_topic_suffix', '/class')
@@ -199,7 +199,7 @@ class InferenceNode:
 
 if __name__ == '__main__':
     try:
-        InferenceNode()
+        ClassificationNode()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass
