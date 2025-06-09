@@ -8,22 +8,11 @@ import yaml
 import threading
 from collections import OrderedDict
 import ros_numpy
-
-try:
-    from pointnext.utils import EasyConfig, load_checkpoint
-    from pointnext.model import build_model_from_cfg
-    from pointnext.dataset.human.human import HumanDataset
-    from pointnext.dataset.online.online_classification import PointCloudProcessor
-except ImportError as e:
-    print(f"Error: Could not import required modules. Details: {e}")
-    exit(1)
+from pointnext.utils import EasyConfig, load_checkpoint
+from pointnext.model import build_model_from_cfg
+from pointnext.dataset.online.online_classification import OnlineDataloader
 
 class ClassificationNode:
-    """
-    A ROS node for point cloud inference, synchronized by a trigger topic
-    that specifies the exact number of messages per frame. This provides a
-    robust, event-driven alternative to time-based synchronization.
-    """
     def __init__(self):
         rospy.init_node('pointcloud_classification_node')
 
@@ -37,7 +26,7 @@ class ClassificationNode:
         trigger_topic = rospy.get_param('~trigger_topic', '/motion_detector/cluster_batch')
         self.buffer_timeout = rospy.get_param('~buffer_timeout', 2.0) # Seconds to keep stale frames
 
-        self.processor = PointCloudProcessor(num_points=num_points, device=self.device)
+        self.processor = OnlineDataloader(num_points=num_points, device=self.device)
         rospy.loginfo(f"Processor initialized for {num_points} points on '{self.device}'.")
 
         try:
@@ -48,7 +37,7 @@ class ClassificationNode:
             load_checkpoint(self.model, pretrained_path=model_path)
             self.model.eval()
             rospy.loginfo(f"Model loaded from {model_path}.")
-            self.class_names = cfg.get('classes', HumanDataset.classes)
+            self.class_names = cfg.get('classes', OnlineDataloader.classes)
             rospy.loginfo(f"Using classes: {self.class_names}")
         except Exception as e:
             rospy.logerr(f"Failed to load model/config: {e}")
@@ -130,22 +119,16 @@ class ClassificationNode:
     def _cleanup_buffers(self):
         now = rospy.Time.now()
         
-        # We must iterate over a copy of the keys, as we might delete from the dict.
-        # First, clean up stale frames (frames for which we have received at least one cluster).
         for s, data in list(self.frame_buffer.items()):
             if (now - data['arrival_time']).to_sec() > self.buffer_timeout:
                 expected = self.trigger_buffer.get(s, {}).get('expected_count', 'N/A')
                 rospy.logwarn(f"Timing out stale frame {s} (recv: {len(data['messages'])}, expect: {expected}).")
                 del self.frame_buffer[s]
-                # Also remove the corresponding trigger if it exists.
                 if s in self.trigger_buffer:
                     del self.trigger_buffer[s]
         
-        # Second, clean up stale triggers (triggers for which no clusters ever arrived).
         for s, data in list(self.trigger_buffer.items()):
             if (now - data['arrival_time']).to_sec() > self.buffer_timeout:
-                # If we are here, the stamp 's' is not in frame_buffer, because it would have been
-                # cleaned up in the loop above. So we know we received 0 clusters.
                 rospy.logwarn(f"Timing out stale trigger {s} (expect: {data['expected_count']}, recv: 0).")
                 del self.trigger_buffer[s]
 
