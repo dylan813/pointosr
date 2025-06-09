@@ -1,13 +1,13 @@
 <launch>
     <!-- 
-        This launch file starts the LIVE inference node for PointOSR.
-        It runs the inference_node.py script as a persistent ROS node that
-        subscribes to point cloud topics and performs inference in real-time.
+        This launch file starts the point cloud classification system for real-time operation.
+        It runs the classification_node.py script as a persistent ROS node that
+        continuously processes incoming point clouds.
 
         This is different from 'inference.launch', which runs a non-ROS script
         in a loop for frame-by-frame offline processing.
 
-        Parameters for the model config and pretrained weights are set below.
+        Parameters for the classification node.
     -->
     <arg name="cfg_path" default="$(find pointosr)/pointnext/cfgs/pointnext-s.yaml" />
     <arg name="model_path" default="/home/cerlab/Documents/data/pointosr/pointosr_log/cfgs/bs32_vbs4/checkpoint/cfgs-train-pointnext-s-ngpus1-seed6126-20250418-012725-cJ8XQUbkLJotEiCEfg37Pm_ckpt_best.pth" />
@@ -17,7 +17,7 @@
     <arg name="max_cluster_topics" default="30" />
     <arg name="trigger_topic" default="/motion_detector/cluster_batch" />
 
-    <node name="pointosr_live_inference" pkg="pointosr_ros" type="inference_node.py" output="screen">
+    <node name="pointosr_live_classification" pkg="pointosr_ros" type="classification_node.py" output="screen">
         <param name="cfg_path" value="$(arg cfg_path)" />
         <param name="model_path" value="$(arg model_path)" />
         <param name="input_topic_prefix" value="$(arg input_prefix)" />
