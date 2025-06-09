@@ -7,13 +7,13 @@ import torch
 import yaml
 import threading
 from collections import OrderedDict
+import ros_numpy
 
 try:
-    import ros_numpy
-    from pointnext.dataset.online.inference import PointCloudProcessor
     from pointnext.utils import EasyConfig, load_checkpoint
     from pointnext.model import build_model_from_cfg
     from pointnext.dataset.human.human import HumanDataset
+    from pointnext.dataset.online.online_classification import PointCloudProcessor
 except ImportError as e:
     print(f"Error: Could not import required modules. Details: {e}")
     exit(1)
