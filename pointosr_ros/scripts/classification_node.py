@@ -60,7 +60,7 @@ class ClassificationNode:
     def _setup_subscriber(self, index):
         topic_name = f"{self.input_topic_prefix}{index}"
         publisher_topic = topic_name + self.output_topic_suffix
-        self.result_publishers[topic_name] = rospy.Publisher(publisher_topic, String, queue_size=10)
+        self.result_publishers[topic_name] = rospy.Publisher(publisher_topic, Header, queue_size=10)
         return rospy.Subscriber(
             topic_name, PointCloud2, 
             lambda msg, tn=topic_name: self._cluster_callback(msg, tn)
@@ -171,7 +171,12 @@ class ClassificationNode:
                 for i in range(pred_indices.shape[0]):
                     class_name = self.class_names[pred_indices[i].item()]
                     topic_name = valid_topic_list[i]
-                    self.result_publishers[topic_name].publish(String(data=class_name))
+                    
+                    header_msg = Header()
+                    header_msg.stamp = stamp
+                    header_msg.frame_id = class_name
+                    self.result_publishers[topic_name].publish(header_msg)
+
                     predictions_log.append(f"{topic_name}: '{class_name}'")
                 
                 if predictions_log:
