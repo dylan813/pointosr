@@ -4,40 +4,40 @@ from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import String, Header
 import numpy as np
 import torch
-import yaml
 import threading
 from collections import OrderedDict
 import ros_numpy
-import pcl_ros
 from pointnext.utils import EasyConfig, load_checkpoint
 from pointnext.model import build_model_from_cfg
 from pointnext.dataset.online.online_classification import OnlineDataloader
 
 class ClassificationNode:
     def __init__(self):
-        rospy.init_node('pointcloud_classification_node')
-
-        self.input_topic_prefix = rospy.get_param('~input_topic_prefix', '/cluster_')
-        self.output_topic_suffix = rospy.get_param('~output_topic_suffix', '/class')
-        cfg_path = rospy.get_param('~cfg_path')
-        model_path = rospy.get_param('~model_path')
-        num_points = rospy.get_param('~num_points', 2048)
-        self.device = rospy.get_param('~device', 'cuda')
-        max_cluster_topics = rospy.get_param('~max_cluster_topics', 30)
+        rospy.init_node('pointosr_live_classification', anonymous=True)
+        
         trigger_topic = rospy.get_param('~trigger_topic', '/motion_detector/cluster_batch')
-        self.buffer_timeout = rospy.get_param('~buffer_timeout', 2.0)       #seconds to keep stale frames
+        self.input_topic_prefix = rospy.get_param('~input_topic_prefix', '/cluster_')
         self.filtered_topic_prefix = rospy.get_param('~filtered_topic_prefix', '/filt_cluster_')
+        self.output_topic_suffix = rospy.get_param('~output_topic_suffix', '/class')
+        max_cluster_topics = rospy.get_param('~max_cluster_topics', 30)
+        self.buffer_timeout = rospy.get_param('~buffer_timeout', 10.0)
 
-        self.processor = OnlineDataloader(num_points=num_points, device=self.device)
-        rospy.loginfo(f"Processor initialized for {num_points} points on '{self.device}'.")
+        model_path = rospy.get_param('~model_path')
+        cfg_path = rospy.get_param('~cfg_path')
+        device = rospy.get_param('~device', 'cuda')
+        num_points = rospy.get_param('~num_points', 2048)
 
         try:
+            self.processor = OnlineDataloader(num_points=num_points, device=device)
+            rospy.loginfo(f"Processor initialized for {num_points} points on '{device}'.")
+            
             cfg = EasyConfig()
             cfg.load(cfg_path, recursive=True)
             cfg.update(rospy.get_param('~'))
-            self.model = build_model_from_cfg(cfg.model).to(self.device)
+            self.model = build_model_from_cfg(cfg.model).to(device)
             load_checkpoint(self.model, pretrained_path=model_path)
             self.model.eval()
+            self.device = device
             rospy.loginfo(f"Model loaded from {model_path}.")
             self.class_names = cfg.get('classes', OnlineDataloader.classes)
             rospy.loginfo(f"Using classes: {self.class_names}")
@@ -52,6 +52,13 @@ class ClassificationNode:
         
         self.result_publishers = {}
         self.filtered_publishers = {}
+        
+        # Add completion trigger publisher
+        self.completion_trigger_pub = rospy.Publisher(
+            trigger_topic.replace('cluster_batch', 'filtered_complete'), 
+            Header, queue_size=10
+        )
+        
         rospy.loginfo(f"Subscribing to up to {max_cluster_topics} topics with prefix '{self.input_topic_prefix}'.")     #might remove later these good for sanity
         rospy.loginfo(f"Will publish individual filtered clusters with prefix '{self.filtered_topic_prefix}'.")
         self.cluster_subscribers = [
@@ -115,7 +122,7 @@ class ClassificationNode:
             topic_list = list(batch_data_dict.keys())
             msgs = [batch_data_dict[tn] for tn in topic_list]
             
-            rospy.loginfo(f"Processing batch of {len(msgs)} clusters for stamp {stamp}.")
+            rospy.logdebug(f"Processing batch of {len(msgs)} clusters for stamp {stamp}.")
             self._process_batch(msgs, topic_list, stamp)
         finally:
             self.buffer_lock.acquire()
@@ -191,11 +198,22 @@ class ClassificationNode:
                         self._publish_individual_filtered_cluster(valid_msgs[i], filtered_count, stamp)
                         filtered_count += 1
                 
+                # Small delay to ensure filtered cluster messages are sent before completion trigger
                 if filtered_count > 0:
-                    rospy.loginfo(f"Published {filtered_count} individual filtered clusters from {len(valid_msgs)} total clusters.")
+                    rospy.sleep(0.01)  # 10ms delay to ensure message ordering
+                
+                # Send completion trigger after all filtered clusters are published
+                completion_header = Header()
+                completion_header.stamp = stamp
+                completion_header.seq = filtered_count
+                completion_header.frame_id = "filtered_complete"
+                self.completion_trigger_pub.publish(completion_header)
+                
+                if filtered_count > 0:
+                    rospy.logdebug(f"Published {filtered_count} individual filtered clusters from {len(valid_msgs)} total clusters.")
                 
                 if predictions_log:
-                    rospy.loginfo(f"Batch Predictions for stamp {stamp}: {'; '.join(predictions_log)}")
+                    rospy.logdebug(f"Batch Predictions for stamp {stamp}: {'; '.join(predictions_log)}")
 
         except Exception as e:
             rospy.logerr(f"Error processing batch for stamp {stamp}: {e}")
