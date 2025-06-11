@@ -12,7 +12,7 @@
     <!-- Keep defaults -->
     <arg name="input_topic_prefix" default="/cluster_" />
     <arg name="trigger_topic" default="/motion_detector/cluster_batch" />
-    <arg name="filtered_clusters_topic" default="/filt_clusters" />
+    <arg name="filtered_topic_prefix" default="/filt_cluster_" />
     <arg name="device" default="cuda" />
 
     <node name="pointosr_live_classification" pkg="pointosr_ros" type="classification_node.py" output="screen">
@@ -22,7 +22,7 @@
         <param name="max_cluster_topics" value="$(arg max_cluster_topics)" />
         <param name="input_topic_prefix" value="$(arg input_topic_prefix)" />
         <param name="trigger_topic" value="$(arg trigger_topic)" />
-        <param name="filtered_clusters_topic" value="$(arg filtered_clusters_topic)" />
+        <param name="filtered_topic_prefix" value="$(arg filtered_topic_prefix)" />
         <param name="device" value="$(arg device)" />
     </node>
 </launch> 

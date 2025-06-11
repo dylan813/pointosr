@@ -26,7 +26,7 @@ class ClassificationNode:
         max_cluster_topics = rospy.get_param('~max_cluster_topics', 30)
         trigger_topic = rospy.get_param('~trigger_topic', '/motion_detector/cluster_batch')
         self.buffer_timeout = rospy.get_param('~buffer_timeout', 2.0)       #seconds to keep stale frames
-        filtered_clusters_topic = rospy.get_param('~filtered_clusters_topic', '/filt_clusters')
+        self.filtered_topic_prefix = rospy.get_param('~filtered_topic_prefix', '/filt_cluster_')
 
         self.processor = OnlineDataloader(num_points=num_points, device=self.device)
         rospy.loginfo(f"Processor initialized for {num_points} points on '{self.device}'.")
@@ -51,9 +51,9 @@ class ClassificationNode:
         self.buffer_lock = threading.Lock()
         
         self.result_publishers = {}
-        self.filtered_clusters_pub = rospy.Publisher(filtered_clusters_topic, PointCloud2, queue_size=10)
+        self.filtered_publishers = {}
         rospy.loginfo(f"Subscribing to up to {max_cluster_topics} topics with prefix '{self.input_topic_prefix}'.")     #might remove later these good for sanity
-        rospy.loginfo(f"Publishing filtered clusters to '{filtered_clusters_topic}'.")
+        rospy.loginfo(f"Will publish individual filtered clusters with prefix '{self.filtered_topic_prefix}'.")
         self.cluster_subscribers = [
             self._setup_subscriber(i) for i in range(max_cluster_topics)
         ]
@@ -173,7 +173,7 @@ class ClassificationNode:
                 pred_indices = torch.argmax(logits, dim=1)
                 
                 predictions_log = []
-                filtered_clusters = []
+                filtered_count = 0
                 
                 for i in range(pred_indices.shape[0]):
                     class_name = self.class_names[pred_indices[i].item()]
@@ -188,11 +188,11 @@ class ClassificationNode:
                     predictions_log.append(f"{topic_name}: '{class_name}'")
                     
                     if class_name.lower() != "false":
-                        filtered_clusters.append(valid_msgs[i])
+                        self._publish_individual_filtered_cluster(valid_msgs[i], filtered_count, stamp)
+                        filtered_count += 1
                 
-                if filtered_clusters:
-                    self._publish_filtered_clusters(filtered_clusters, stamp)
-                    rospy.loginfo(f"Published {len(filtered_clusters)} filtered clusters from {len(valid_msgs)} total clusters.")       #might remove later
+                if filtered_count > 0:
+                    rospy.loginfo(f"Published {filtered_count} individual filtered clusters from {len(valid_msgs)} total clusters.")
                 
                 if predictions_log:
                     rospy.loginfo(f"Batch Predictions for stamp {stamp}: {'; '.join(predictions_log)}")
@@ -200,52 +200,35 @@ class ClassificationNode:
         except Exception as e:
             rospy.logerr(f"Error processing batch for stamp {stamp}: {e}")
 
-    def _publish_filtered_clusters(self, cluster_msgs, stamp):
+    def _publish_individual_filtered_cluster(self, cluster_msg, cluster_index, stamp):
         """
-        Aggregate multiple PointCloud2 messages into a single message and publish.
+        Republish an individual valid cluster to a filtered topic.
         """
         try:
-            if not cluster_msgs:
-                return
+            filtered_topic = f"{self.filtered_topic_prefix}{cluster_index}"
             
-            all_points = []
+            if filtered_topic not in self.filtered_publishers:
+                self.filtered_publishers[filtered_topic] = rospy.Publisher(
+                    filtered_topic, PointCloud2, queue_size=10
+                )
+                rospy.loginfo(f"Created publisher for {filtered_topic}")
             
-            for msg in cluster_msgs:
-                pc_data = ros_numpy.numpify(msg)
-                if len(pc_data) > 0:
-                    points = np.zeros((len(pc_data), 4), dtype=np.float32)
-                    points[:, 0] = pc_data['x']
-                    points[:, 1] = pc_data['y'] 
-                    points[:, 2] = pc_data['z']
-                    points[:, 3] = pc_data['intensity']
-                    
-                    valid_mask = np.isfinite(points).all(axis=1)
-                    valid_points = points[valid_mask]
-                    
-                    if len(valid_points) > 0:
-                        all_points.append(valid_points)
-            
-            if not all_points:
-                rospy.logwarn("No valid points found in filtered clusters")
-                return
-                
-            combined_points = np.vstack(all_points)
-            
-            dtype = [('x', np.float32), ('y', np.float32), ('z', np.float32), ('intensity', np.float32)]
-            structured_array = np.zeros(len(combined_points), dtype=dtype)
-            structured_array['x'] = combined_points[:, 0]
-            structured_array['y'] = combined_points[:, 1]
-            structured_array['z'] = combined_points[:, 2]
-            structured_array['intensity'] = combined_points[:, 3]
-            
-            filtered_msg = ros_numpy.msgify(PointCloud2, structured_array)
+            filtered_msg = PointCloud2()
+            filtered_msg.header = cluster_msg.header
             filtered_msg.header.stamp = stamp
-            filtered_msg.header.frame_id = cluster_msgs[0].header.frame_id
+            filtered_msg.height = cluster_msg.height
+            filtered_msg.width = cluster_msg.width
+            filtered_msg.fields = cluster_msg.fields
+            filtered_msg.is_bigendian = cluster_msg.is_bigendian
+            filtered_msg.point_step = cluster_msg.point_step
+            filtered_msg.row_step = cluster_msg.row_step
+            filtered_msg.data = cluster_msg.data
+            filtered_msg.is_dense = cluster_msg.is_dense
             
-            self.filtered_clusters_pub.publish(filtered_msg)
+            self.filtered_publishers[filtered_topic].publish(filtered_msg)
             
         except Exception as e:
-            rospy.logerr(f"Error publishing filtered clusters: {e}")
+            rospy.logerr(f"Error publishing individual filtered cluster {cluster_index}: {e}")
 
 if __name__ == '__main__':
     try:
