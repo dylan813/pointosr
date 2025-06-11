@@ -1,7 +1,7 @@
 #!/home/cerlab/miniconda3/envs/pointosr/bin/python
 import rospy
 from sensor_msgs.msg import PointCloud2
-from std_msgs.msg import String, Header
+from std_msgs.msg import Header
 import numpy as np
 import torch
 import threading
@@ -18,7 +18,6 @@ class ClassificationNode:
         trigger_topic = rospy.get_param('~trigger_topic', '/motion_detector/cluster_batch')
         self.input_topic_prefix = rospy.get_param('~input_topic_prefix', '/cluster_')
         self.filtered_topic_prefix = rospy.get_param('~filtered_topic_prefix', '/filt_cluster_')
-        self.output_topic_suffix = rospy.get_param('~output_topic_suffix', '/class')
         max_cluster_topics = rospy.get_param('~max_cluster_topics', 30)
         self.buffer_timeout = rospy.get_param('~buffer_timeout', 10.0)
 
@@ -50,7 +49,7 @@ class ClassificationNode:
         self.trigger_buffer = OrderedDict()
         self.buffer_lock = threading.Lock()
         
-        self.result_publishers = {}
+        # Dictionary for lazy-initialised publishers of filtered clusters.
         self.filtered_publishers = {}
         
         # Add completion trigger publisher
@@ -70,10 +69,8 @@ class ClassificationNode:
 
     def _setup_subscriber(self, index):
         topic_name = f"{self.input_topic_prefix}{index}"
-        publisher_topic = topic_name + self.output_topic_suffix
-        self.result_publishers[topic_name] = rospy.Publisher(publisher_topic, Header, queue_size=10)
         return rospy.Subscriber(
-            topic_name, PointCloud2, 
+            topic_name, PointCloud2,
             lambda msg, tn=topic_name: self._cluster_callback(msg, tn)
         )
 
@@ -186,21 +183,11 @@ class ClassificationNode:
                     class_name = self.class_names[pred_indices[i].item()]
                     topic_name = valid_topic_list[i]
                     
-                    #remove the /cluster_*/class header msgs once the code works
-                    header_msg = Header()
-                    header_msg.stamp = stamp
-                    header_msg.frame_id = class_name
-                    self.result_publishers[topic_name].publish(header_msg)
-
                     predictions_log.append(f"{topic_name}: '{class_name}'")
                     
                     if class_name.lower() != "false":
                         self._publish_individual_filtered_cluster(valid_msgs[i], filtered_count, stamp)
                         filtered_count += 1
-                
-                # Small delay to ensure filtered cluster messages are sent before completion trigger
-                if filtered_count > 0:
-                    rospy.sleep(0.01)  # 10ms delay to ensure message ordering
                 
                 # Send completion trigger after all filtered clusters are published
                 completion_header = Header()
@@ -225,12 +212,13 @@ class ClassificationNode:
         try:
             filtered_topic = f"{self.filtered_topic_prefix}{cluster_index}"
             
+            # Lazily create publisher for this filtered topic.
             if filtered_topic not in self.filtered_publishers:
                 self.filtered_publishers[filtered_topic] = rospy.Publisher(
                     filtered_topic, PointCloud2, queue_size=10
                 )
-                rospy.loginfo(f"Created publisher for {filtered_topic}")
-            
+                rospy.logdebug(f"Created publisher for {filtered_topic}")
+
             filtered_msg = PointCloud2()
             filtered_msg.header = cluster_msg.header
             filtered_msg.header.stamp = stamp
