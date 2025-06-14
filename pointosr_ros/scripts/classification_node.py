@@ -48,18 +48,13 @@ class ClassificationNode:
         self.frame_buffer = OrderedDict()
         self.trigger_buffer = OrderedDict()
         self.buffer_lock = threading.Lock()
-        
-        # Dictionary for lazy-initialised publishers of filtered clusters.
         self.filtered_publishers = {}
         
-        # Add completion trigger publisher
         self.completion_trigger_pub = rospy.Publisher(
             trigger_topic.replace('cluster_batch', 'filtered_complete'), 
             Header, queue_size=10
         )
         
-        rospy.loginfo(f"Subscribing to up to {max_cluster_topics} topics with prefix '{self.input_topic_prefix}'.")     #might remove later these good for sanity
-        rospy.loginfo(f"Will publish individual filtered clusters with prefix '{self.filtered_topic_prefix}'.")
         self.cluster_subscribers = [
             self._setup_subscriber(i) for i in range(max_cluster_topics)
         ]
@@ -189,7 +184,6 @@ class ClassificationNode:
                         self._publish_individual_filtered_cluster(valid_msgs[i], filtered_count, stamp)
                         filtered_count += 1
                 
-                # Send completion trigger after all filtered clusters are published
                 completion_header = Header()
                 completion_header.stamp = stamp
                 completion_header.seq = filtered_count
@@ -206,13 +200,9 @@ class ClassificationNode:
             rospy.logerr(f"Error processing batch for stamp {stamp}: {e}")
 
     def _publish_individual_filtered_cluster(self, cluster_msg, cluster_index, stamp):
-        """
-        Republish an individual valid cluster to a filtered topic.
-        """
         try:
             filtered_topic = f"{self.filtered_topic_prefix}{cluster_index}"
             
-            # Lazily create publisher for this filtered topic.
             if filtered_topic not in self.filtered_publishers:
                 self.filtered_publishers[filtered_topic] = rospy.Publisher(
                     filtered_topic, PointCloud2, queue_size=10
