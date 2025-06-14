@@ -200,7 +200,7 @@ class ClassificationNode:
                     rospy.logdebug(f"Published {filtered_count} individual filtered clusters from {len(valid_msgs)} total clusters.")
                 
                 if predictions_log:
-                    rospy.logdebug(f"Batch Predictions for stamp {stamp}: {'; '.join(predictions_log)}")
+                    rospy.loginfo(f"Batch Predictions for stamp {stamp}: {'; '.join(predictions_log)}")
 
         except Exception as e:
             rospy.logerr(f"Error processing batch for stamp {stamp}: {e}")
