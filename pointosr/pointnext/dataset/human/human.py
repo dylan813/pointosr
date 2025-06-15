@@ -27,10 +27,6 @@ class HumanDataset(Dataset):
                  num_points=2048,
                  transform=None,
                  uniform_sample=True,
-                 lower_percentile=1.0,
-                 upper_percentile=99.0,
-                 intensity_low=None,
-                 intensity_high=None,
                  **kwargs):
         super().__init__()
         self.data_dir = data_dir
@@ -39,6 +35,9 @@ class HumanDataset(Dataset):
         self.num_points = num_points
         self.classes = HumanDataset.classes
         self.uniform_sample = uniform_sample
+        
+        self._sensor_max = 65_535
+        self._log_max_val = np.log1p(self._sensor_max)
 
         logging.info(f"Directory to class index mapping: {self.dir_to_class_idx}")
         split_filename = os.path.join(data_dir, f"{split}_split.txt")
@@ -63,22 +62,6 @@ class HumanDataset(Dataset):
 
         logging.info(f'Successfully loaded {split} split. Number of samples: {len(self.file_list)}')
         logging.info(f'Dataset: {self.__class__.__name__}, Classes: {self.classes}, Num classes: {self.num_classes}')
-        
-        if split == "train":
-            all_ints = []
-            for rel_fp in self.file_list:
-                pts = np.fromfile(os.path.join(data_dir, rel_fp), dtype=np.float32).reshape(-1, 4)
-                all_ints.append(pts[:, 3])
-            all_ints = np.concatenate(all_ints)
-            self.int_low = np.percentile(all_ints, lower_percentile)
-            self.int_high = np.percentile(all_ints, upper_percentile)
-            logging.info(f"Intensity percentiles p{lower_percentile}={self.int_low:.2f}, p{upper_percentile}={self.int_high:.2f}")
-        else:
-            if intensity_low is None or intensity_high is None:
-                raise ValueError("For val/test splits, pass intensity_low & intensity_high computed from training.")
-            self.int_low = float(intensity_low)
-            self.int_high = float(intensity_high)
-        self._eps = 1e-6
         
         if (split == 'val' or split == 'test') and uniform_sample:
             self.fps_cache = {}
@@ -110,8 +93,7 @@ class HumanDataset(Dataset):
         return pts
 
     def _norm_intensity(self, ints: np.ndarray) -> np.ndarray:
-        clipped = np.clip(ints, self.int_low, self.int_high)
-        return (clipped - self.int_low) / (self.int_high - self.int_low + self._eps)
+        return np.log1p(ints) / self._log_max_val
 
     def __getitem__(self, idx):
         filename = self.file_list[idx]
@@ -127,8 +109,7 @@ class HumanDataset(Dataset):
             sampled_points = self._sample_points(points)
 
         pos = sampled_points[:, :3]
-        intensity_raw = sampled_points[:, 3]
-        intensity_norm = self._norm_intensity(intensity_raw).reshape(-1, 1)
+        intensity_norm = self._norm_intensity(sampled_points[:, 3]).reshape(-1, 1)
 
         data = {'pos': torch.from_numpy(pos).float(),
                 'y': torch.tensor(label).long(),
