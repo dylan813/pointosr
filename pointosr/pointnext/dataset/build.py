@@ -6,9 +6,11 @@ import torch
 from easydict import EasyDict as edict
 from pointnext.utils import registry
 from pointnext.transforms import build_transforms_from_cfg
+import os
 
 DATASETS = registry.Registry('dataset')
 
+_intensity_bounds_cache = {}
 
 def concat_collate_fn(datas):
     """collate fn for point transformer
@@ -68,6 +70,39 @@ def build_dataloader_from_cfg(batch_size,
         if split_cfg.get('split', None) is None:    # add 'split' in dataset_split_cfg
             split_cfg.split = split
         split_cfg.transform = data_transform
+        
+        if dataset_cfg.common.get('NAME') == 'HumanDataset' and split in ['val', 'test']:
+            cache_key = dataset_cfg.common.get('data_dir', '')
+            
+            if cache_key not in _intensity_bounds_cache:
+                train_split_file = os.path.join(dataset_cfg.common.get('data_dir', ''), 'train_split.txt')
+                
+                if os.path.exists(train_split_file):
+                    train_split_cfg = dataset_cfg.get('train', edict())
+                    train_split_cfg.split = 'train'
+                    if datatransforms_cfg is not None:
+                        train_transform = build_transforms_from_cfg('train', datatransforms_cfg)
+                        train_split_cfg.transform = train_transform
+                    else:
+                        train_split_cfg.transform = None
+                    
+                    temp_train_dataset = build_dataset_from_cfg(dataset_cfg.common, train_split_cfg)
+                    _intensity_bounds_cache[cache_key] = {
+                        'intensity_low': temp_train_dataset.int_low,
+                        'intensity_high': temp_train_dataset.int_high
+                    }
+                    del temp_train_dataset
+                else:
+                    #Will need to adjust for now use default intensity bounds when no training data is available  
+                    print(f"Warning: No training split found at {train_split_file}. Using default intensity bounds.")
+                    _intensity_bounds_cache[cache_key] = {
+                        'intensity_low': 91.0,
+                        'intensity_high': 4526.0
+                    }
+            
+            split_cfg.intensity_low = _intensity_bounds_cache[cache_key]['intensity_low']
+            split_cfg.intensity_high = _intensity_bounds_cache[cache_key]['intensity_high']
+        
         dataset = build_dataset_from_cfg(dataset_cfg.common, split_cfg)
 
     collate_fn = dataset.collate_fn if hasattr(dataset, 'collate_fn') else None
