@@ -3,8 +3,8 @@
 ## Installation
 
 ```bash
-git clone https://github.com/dylan813/point_osr.git
-cd point_osr
+git clone https://github.com/dylan813/pointosr.git
+cd pointosr/pointosr
 ```
 
 ```bash
@@ -34,24 +34,24 @@ export NVCC_FLAGS="--compiler-options '-fPIC' -allow-unsupported-compiler"
 ```
 
 ```bash
-cd pointnext/cpp/pointnet2_batch
+cd pointosr/pointnext/cpp/pointnet2_batch
 python setup.py install
 ```
 
 ## Train Model
 ```bash
-cd point_osr
+cd pointosr/pointosr
 CUDA_VISIBLE_DEVICES=0 python pointnext/classification/main.py --cfg pointnext/cfgs/pointnext-s.yaml
 ```
 
 ## Evaluate Model
 ```bash
-cd point_osr
+cd pointosr/pointosr
 CUDA_VISIBLE_DEVICES=0 python pointnext/classification/main.py --cfg pointnext/cfgs/pointnext-s.yaml mode=test --pretrained_path log/cfgs/.../...ckpt_best.pth
 ```
 
 ## Test Computational Efficiency (does not work)
 ```bash
-cd point_osr
+cd pointosr/pointosr
 CUDA_VISIBLE_DEVICES=0 python pointnext/eval/profile.py --cfg pointnext/cfgs/pointnext-s.yaml batch_size=128 num_points=1024 timing=True flops=True
 ```
