@@ -18,7 +18,6 @@ class OnlineDataloader:
         self._log_max_val = np.log1p(self._sensor_max)
 
     def _norm_intensity(self, ints: np.ndarray) -> np.ndarray:
-        """Apply the same intensity normalization as in human.py"""
         return np.log1p(ints) / self._log_max_val
 
     def process(self, points, identifier=None):
