@@ -13,6 +13,13 @@ class OnlineDataloader:
     def __init__(self, num_points=2048, device='cuda'):
         self.num_points = num_points
         self.device = torch.device(device)
+        
+        self._sensor_max = 65_535
+        self._log_max_val = np.log1p(self._sensor_max)
+
+    def _norm_intensity(self, ints: np.ndarray) -> np.ndarray:
+        """Apply the same intensity normalization as in human.py"""
+        return np.log1p(ints) / self._log_max_val
 
     def process(self, points, identifier=None):
         if not isinstance(points, np.ndarray) or points.ndim != 2 or points.shape[1] != 4:
@@ -31,7 +38,9 @@ class OnlineDataloader:
 
         # PointsToTensor (datatransform)
         pos = torch.from_numpy(sampled_points[:, :3]).float()
-        intensity = torch.from_numpy(sampled_points[:, 3:]).float()
+        
+        intensity_norm = self._norm_intensity(sampled_points[:, 3]).reshape(-1, 1)
+        intensity = torch.from_numpy(intensity_norm).float()
 
         # PointCloudCenterAndNormalize (datatransform)
         pos = pos - torch.mean(pos, axis=0, keepdims=True)
