@@ -3,7 +3,7 @@
     <!-- Config for PointNext model architecture -->
     <arg name="cfg_path" default="$(find pointosr)/pointnext/cfgs/pointnext-s.yaml" />
     <!-- Model checkpoint directory-->
-    <arg name="model_path" default="/home/cerlab/Documents/data/pointosr/pointosr_log/cfgs/bs32_vbs4/checkpoint/cfgs-train-pointnext-s-ngpus1-seed6126-20250418-012725-cJ8XQUbkLJotEiCEfg37Pm_ckpt_best.pth" />
+    <arg name="model_path" default="/home/cerlab/Documents/data/pointosr/pointosr_log/norm/cfgs/norm_intensity2_bs16_vbs4/checkpoint/cfgs-train-pointnext-s-ngpus1-seed1467-20250615-161122-4ufduH7KHBFYjxF9EvNUto_ckpt_best.pth" />
     
     <!-- Parameters -->    
     <arg name="num_points" default="2048" />    <!-- Dependent on max point cloud size during training -->
