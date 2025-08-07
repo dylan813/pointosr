@@ -8,11 +8,11 @@
     <!-- Parameters -->    
     <arg name="num_points" default="2048" />    <!-- Dependent on max point cloud size during training -->
     <arg name="max_cluster_topics" default="30" />
+    <arg name="debug_logging" default="false" />   <!-- Enable detailed debug logging -->
 
     <!-- Keep defaults -->
     <arg name="input_topic_prefix" default="/cluster_" />
     <arg name="trigger_topic" default="/motion_detector/cluster_batch" />
-    <arg name="filtered_topic_prefix" default="/filt_cluster_" />
     <arg name="device" default="cuda" />
 
     <node name="pointosr_live_classification" pkg="pointosr_ros" type="classification_node.py" output="screen">
@@ -22,7 +22,7 @@
         <param name="max_cluster_topics" value="$(arg max_cluster_topics)" />
         <param name="input_topic_prefix" value="$(arg input_topic_prefix)" />
         <param name="trigger_topic" value="$(arg trigger_topic)" />
-        <param name="filtered_topic_prefix" value="$(arg filtered_topic_prefix)" />
         <param name="device" value="$(arg device)" />
+        <param name="debug_logging" value="$(arg debug_logging)" />
     </node>
 </launch> 
