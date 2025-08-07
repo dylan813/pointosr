@@ -90,9 +90,14 @@ class ClassificationNode:
             stamp = header_msg.stamp
             expected_count = header_msg.seq
             now = rospy.Time.now()
-            
+
             if expected_count == 0:
-                rospy.logdebug(f"Trigger for stamp {stamp} received with 0 expected clusters, ignoring.")
+                rospy.logdebug(f"Trigger for stamp {stamp} received with 0 expected clusters — publishing empty batch.")
+                self.buffer_lock.release()
+                try:
+                    self._process_batch([], [], stamp, 0)
+                finally:
+                    self.buffer_lock.acquire()
                 return
 
             self.trigger_buffer[stamp] = {'expected_count': expected_count, 'arrival_time': now}
@@ -100,7 +105,7 @@ class ClassificationNode:
             if stamp in self.frame_buffer:
                 if len(self.frame_buffer[stamp]['messages']) == expected_count:
                     self._process_frame_if_complete(stamp)
-            
+
             self._cleanup_buffers()
 
     def _process_frame_if_complete(self, stamp):
