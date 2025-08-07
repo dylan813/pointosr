@@ -2,11 +2,14 @@
 import rospy
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Header
+from geometry_msgs.msg import Point
+from pointosr_ros.msg import classification_batch, cluster_and_cls
 import numpy as np
 import torch
 import threading
 from collections import OrderedDict
 import ros_numpy
+import time
 from pointnext.utils import EasyConfig, load_checkpoint
 from pointnext.model import build_model_from_cfg
 from pointnext.dataset.online.online_classification import OnlineDataloader
@@ -48,11 +51,9 @@ class ClassificationNode:
         self.frame_buffer = OrderedDict()
         self.trigger_buffer = OrderedDict()
         self.buffer_lock = threading.Lock()
-        self.filtered_publishers = {}
         
-        self.completion_trigger_pub = rospy.Publisher(
-            trigger_topic.replace('cluster_batch', 'filtered_complete'), 
-            Header, queue_size=10
+        self.batch_publisher = rospy.Publisher(
+            '/classified_clusters', classification_batch, queue_size=10
         )
         
         self.cluster_subscribers = [
@@ -106,7 +107,7 @@ class ClassificationNode:
         rospy.logdebug(f"Frame for stamp {stamp} is complete. Processing.")
         
         batch_data_dict = self.frame_buffer.pop(stamp)['messages']
-        self.trigger_buffer.pop(stamp)
+        expected_count = self.trigger_buffer.pop(stamp)['expected_count']
         
         self.buffer_lock.release()
         
@@ -115,7 +116,7 @@ class ClassificationNode:
             msgs = [batch_data_dict[tn] for tn in topic_list]
             
             rospy.logdebug(f"Processing batch of {len(msgs)} clusters for stamp {stamp}.")
-            self._process_batch(msgs, topic_list, stamp)
+            self._process_batch(msgs, topic_list, stamp, expected_count)
         finally:
             self.buffer_lock.acquire()
 
@@ -135,32 +136,71 @@ class ClassificationNode:
                 rospy.logwarn(f"Timing out stale trigger {s} (expect: {data['expected_count']}, recv: 0).")
                 del self.trigger_buffer[s]
 
-    def _process_batch(self, msgs, topic_list, stamp):
+    def _process_batch(self, msgs, topic_list, stamp, expected_count):
+        start_time = time.time()
+        
+        batch_result = classification_batch()
+        batch_result.header.stamp = stamp
+        batch_result.header.frame_id = "classification_batch"
+        batch_result.total_input_clusters = expected_count
+        batch_result.total_processed_clusters = 0
+        batch_result.human_count = 0
+        batch_result.false_count = 0
+        batch_result.processing_errors = 0
+        batch_result.processing_log = []
+        batch_result.classified_clusters = []
+        
         if not msgs:
+            batch_result.processing_log.append(f"No messages received for stamp {stamp}")
+            self._publish_batch_result(batch_result, start_time)
             return
 
-        batch_pos, batch_x, valid_topic_list, valid_msgs = [], [], [], []
+        batch_pos, batch_x, valid_indices, valid_msgs = [], [], [], []
         
         try:
             for i, msg in enumerate(msgs):
                 topic_name = topic_list[i]
-                pc_data = ros_numpy.numpify(msg)
-                points = np.zeros((len(pc_data), 4), dtype=np.float32)
-                points[:, 0], points[:, 1], points[:, 2], points[:, 3] = pc_data['x'], pc_data['y'], pc_data['z'], pc_data['intensity']
-                points = points[np.isfinite(points).all(axis=1)]
+                
+                try:
+                    cluster_index = int(topic_name.split('_')[-1])
+                except (ValueError, IndexError):
+                    cluster_index = i
+                
+                try:
+                    pc_data = ros_numpy.numpify(msg)
+                    points = np.zeros((len(pc_data), 4), dtype=np.float32)
+                    points[:, 0], points[:, 1], points[:, 2], points[:, 3] = pc_data['x'], pc_data['y'], pc_data['z'], pc_data['intensity']
+                    points = points[np.isfinite(points).all(axis=1)]
 
-                if points.shape[0] == 0:
-                    rospy.logwarn(f"Empty point cloud on {topic_name} in batch {stamp}. Skipping.")
-                    continue
+                    if points.shape[0] == 0:
+                        failed_cluster = self._create_failed_cluster_result(msg, cluster_index, "Empty point cloud")
+                        batch_result.classified_clusters.append(failed_cluster)
+                        batch_result.processing_errors += 1
+                        batch_result.processing_log.append(f"Cluster {cluster_index}: Empty point cloud")
+                        continue
 
-                data = self.processor.process(points)
-                batch_pos.append(data['pos'])
-                batch_x.append(data['x'])
-                valid_topic_list.append(topic_name)
-                valid_msgs.append(msg)
+                    centroid = Point()
+                    centroid.x = float(np.mean(points[:, 0]))
+                    centroid.y = float(np.mean(points[:, 1]))
+                    centroid.z = float(np.mean(points[:, 2]))
+
+                    data = self.processor.process(points)
+                    batch_pos.append(data['pos'])
+                    batch_x.append(data['x'])
+                    valid_indices.append(cluster_index)
+                    valid_msgs.append((msg, centroid, len(points)))
+                    
+                except Exception as e:
+                    failed_cluster = self._create_failed_cluster_result(msg, cluster_index, str(e))
+                    batch_result.classified_clusters.append(failed_cluster)
+                    batch_result.processing_errors += 1
+                    batch_result.processing_log.append(f"Cluster {cluster_index}: Processing error - {str(e)}")
+
+            batch_result.total_processed_clusters = len(valid_msgs)
 
             if not batch_pos:
-                rospy.logwarn(f"All point clouds in batch for stamp {stamp} were empty or invalid.")
+                batch_result.processing_log.append(f"All {len(msgs)} clusters failed preprocessing")
+                self._publish_batch_result(batch_result, start_time)
                 return 
 
             pos_tensor = torch.stack(batch_pos, dim=0).to(self.device)
@@ -170,61 +210,83 @@ class ClassificationNode:
             with torch.no_grad():
                 logits = self.model(model_data)
                 pred_indices = torch.argmax(logits, dim=1)
-                
-                predictions_log = []
-                filtered_count = 0
+                confidences = torch.softmax(logits, dim=1)
                 
                 for i in range(pred_indices.shape[0]):
-                    class_name = self.class_names[pred_indices[i].item()]
-                    topic_name = valid_topic_list[i]
+                    class_idx = pred_indices[i].item()
+                    class_name = self.class_names[class_idx]
+                    confidence = float(confidences[i, class_idx])
+                    cluster_index = valid_indices[i]
+                    msg, centroid, cluster_size = valid_msgs[i]
                     
-                    predictions_log.append(f"{topic_name}: '{class_name}'")
+                    cluster_result = cluster_and_cls()
+                    cluster_result.header = msg.header
+                    cluster_result.header.stamp = stamp
+                    cluster_result.pointcloud = msg
+                    cluster_result.class_name = class_name
+                    cluster_result.confidence = confidence
+                    cluster_result.is_human = (class_name.lower() != "false")
+                    cluster_result.original_cluster_index = cluster_index
+                    cluster_result.processing_success = True
+                    cluster_result.error_message = ""
+                    cluster_result.centroid = centroid
+                    cluster_result.cluster_size = cluster_size
                     
-                    if class_name.lower() != "false":
-                        self._publish_individual_filtered_cluster(valid_msgs[i], filtered_count, stamp)
-                        filtered_count += 1
-                
-                completion_header = Header()
-                completion_header.stamp = stamp
-                completion_header.seq = filtered_count
-                completion_header.frame_id = "filtered_complete"
-                self.completion_trigger_pub.publish(completion_header)
-                
-                if filtered_count > 0:
-                    rospy.logdebug(f"Published {filtered_count} individual filtered clusters from {len(valid_msgs)} total clusters.")
-                
-                if predictions_log:
-                    rospy.loginfo(f"Batch Predictions for stamp {stamp}: {'; '.join(predictions_log)}")
+                    batch_result.classified_clusters.append(cluster_result)
+                    
+                    if cluster_result.is_human:
+                        batch_result.human_count += 1
+                    else:
+                        batch_result.false_count += 1
+                        
+                    batch_result.processing_log.append(f"Cluster {cluster_index}: '{class_name}' (conf: {confidence:.3f})")
+
+            self._publish_batch_result(batch_result, start_time)
 
         except Exception as e:
+            batch_result.processing_log.append(f"Critical error in batch processing: {str(e)}")
+            batch_result.processing_errors += 1
             rospy.logerr(f"Error processing batch for stamp {stamp}: {e}")
+            self._publish_batch_result(batch_result, start_time)
 
-    def _publish_individual_filtered_cluster(self, cluster_msg, cluster_index, stamp):
+    def _create_failed_cluster_result(self, msg, cluster_index, error_message):
+        failed_cluster = cluster_and_cls()
+        failed_cluster.header = msg.header
+        failed_cluster.pointcloud = msg
+        failed_cluster.class_name = "processing_failed"
+        failed_cluster.confidence = 0.0
+        failed_cluster.is_human = False
+        failed_cluster.original_cluster_index = cluster_index
+        failed_cluster.processing_success = False
+        failed_cluster.error_message = error_message
+        failed_cluster.centroid = Point()
+        failed_cluster.cluster_size = 0
+        return failed_cluster
+    
+    def _publish_batch_result(self, batch_result, start_time):
         try:
-            filtered_topic = f"{self.filtered_topic_prefix}{cluster_index}"
+            batch_result.processing_time_sec = time.time() - start_time
+            batch_result.model_version = "pointnext-s"
             
-            if filtered_topic not in self.filtered_publishers:
-                self.filtered_publishers[filtered_topic] = rospy.Publisher(
-                    filtered_topic, PointCloud2, queue_size=10
-                )
-                rospy.logdebug(f"Created publisher for {filtered_topic}")
-
-            filtered_msg = PointCloud2()
-            filtered_msg.header = cluster_msg.header
-            filtered_msg.header.stamp = stamp
-            filtered_msg.height = cluster_msg.height
-            filtered_msg.width = cluster_msg.width
-            filtered_msg.fields = cluster_msg.fields
-            filtered_msg.is_bigendian = cluster_msg.is_bigendian
-            filtered_msg.point_step = cluster_msg.point_step
-            filtered_msg.row_step = cluster_msg.row_step
-            filtered_msg.data = cluster_msg.data
-            filtered_msg.is_dense = cluster_msg.is_dense
+            self.batch_publisher.publish(batch_result)
             
-            self.filtered_publishers[filtered_topic].publish(filtered_msg)
+            total_clusters = batch_result.total_input_clusters
+            processed_clusters = batch_result.total_processed_clusters
+            human_count = batch_result.human_count
+            false_count = batch_result.false_count
+            error_count = batch_result.processing_errors
             
+            rospy.loginfo(f"Batch {batch_result.header.stamp}: "
+                         f"Input={total_clusters}, Processed={processed_clusters}, "
+                         f"Human={human_count}, False={false_count}, Errors={error_count}, "
+                         f"Time={batch_result.processing_time_sec:.3f}s")
+            
+            if rospy.get_param('~debug_logging', False):
+                for log_entry in batch_result.processing_log:
+                    rospy.logdebug(log_entry)
+                    
         except Exception as e:
-            rospy.logerr(f"Error publishing individual filtered cluster {cluster_index}: {e}")
+            rospy.logerr(f"Error publishing batch result: {e}")
 
 if __name__ == '__main__':
     try:
