@@ -24,12 +24,12 @@ class BatchMonitor:
         self.processing_times = []
         
         self.subscriber = rospy.Subscriber(
-            '/classified_pointclouds', 
+            '/classified_clusters', 
             classification_batch, 
             self.batch_callback
         )
         
-        rospy.loginfo("BatchMonitor started. Listening for classification_batch messages on /classified_pointclouds")
+        rospy.loginfo("BatchMonitor started. Listening for classification_batch messages on /classified_clusters")
         
         # Print statistics every 30 seconds
         rospy.Timer(rospy.Duration(30), self.print_statistics)
