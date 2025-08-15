@@ -2,7 +2,7 @@
 dataset:
   common:
     NAME: HumanDataset
-    data_dir: './data/eval_human'
+    data_dir: '/home/cerlab/Documents/data/pointosr/human'
   train:
     split: train
   val:
@@ -10,6 +10,9 @@ dataset:
     num_points: 2048
   test:
     split: test
+  calibration:
+    split: cal
+    num_points: 2048
 
 num_points: 2048  # the number of points passed into model
 num_classes: &nclass
@@ -19,8 +22,10 @@ datatransforms:
   train: [PointsToTensor, PointCloudScaling, PointCloudCenterAndNormalize, PointCloudRotation]
   vote: [PointCloudRotation]
   val: [PointsToTensor, PointCloudCenterAndNormalize]
+  test: [PointsToTensor, PointCloudCenterAndNormalize]
+  calibration: [PointsToTensor, PointCloudCenterAndNormalize]
   kwargs:
-    scale: [0.9, 1.1]
+    scale: [0.95, 1.05]
     angle: [0.0, 1.0, 0.0]
     gravity_dim: 1
 
@@ -28,7 +33,6 @@ batch_size: 16
 val_batch_size: 4
 dataloader:
   num_workers: 6
-
 
 # training cfgs
 criterion_args:
@@ -51,17 +55,16 @@ t_max: 200
 
 grad_norm_clip: 10
 
-
 # io and misc
 mode: 'train' # set to test for inference only
 pretrained_path: null
-seed: null
+seed: 42
 
 wandb:
   project: point_osr
   use_wandb: False
 
-log_dir: 'human_dataset'
+log_dir: 'osr_human_dataset'  # Updated log directory name
 root_dir: log/
 print_freq: 10
 val_freq: 1
@@ -69,4 +72,28 @@ save_freq: -1
 
 launcher: 'mp'
 local_rank: 0
-deterministic: False
+deterministic: True
+
+# osr (open set recognition) default settings
+osr:
+  target_tpr: 0.99              # Target True Positive Rate for ID samples
+  K_H: 6                        # Number of human prototypes  
+  K_F: 4                        # Number of false-positive prototypes
+  fused_weights: [0.5, 0.5]     # Initial weights for [energy, cosine] fusion
+  temperature_init: 1.0         # Initial temperature for calibration
+  
+  calibration_dir: '/home/cerlab/Documents/data/pointosr/human'
+  calibration_metadata: '/home/cerlab/Documents/data/pointosr/human/calibration_selection.json'
+  
+  output_dirs:
+    prototypes: 'osr/prototypes'
+    calibration: 'osr/calibration' 
+    metrics: 'osr/metrics'
+    exports: 'model/exports'
+    checkpoints: 'model/checkpoints'
+
+
+checkpoint:
+  save_path: 'model/checkpoints/osr_best.pth'  # OSR-specific checkpoint name
+  save_freq: 10  # Save checkpoint every 10 epochs
+  keep_interval: 50  # Keep checkpoints every 50 epochs
