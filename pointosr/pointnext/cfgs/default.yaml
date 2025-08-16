@@ -61,8 +61,8 @@ pretrained_path: null
 seed: 42
 
 wandb:
-  project: point_osr
-  use_wandb: False
+  project: pointosr
+  use_wandb: True
 
 log_dir: 'osr_human_dataset'  # Updated log directory name
 root_dir: log/
