@@ -13,6 +13,12 @@ dataset:
   calibration:
     split: cal
     num_points: 2048
+  # Evaluation dataset (separate from training)
+  eval:
+    NAME: HumanDataset
+    data_dir: '/home/cerlab/Documents/data/pointosr/eval_human'
+    split: test
+    num_points: 2048
 
 num_points: 2048  # the number of points passed into model
 num_classes: &nclass
@@ -56,9 +62,17 @@ t_max: 200
 grad_norm_clip: 10
 
 # io and misc
-mode: 'train' # set to test for inference only
+mode: 'train' # set to test for inference only, 'osr_eval' for OSR evaluation
 pretrained_path: null
 seed: 42
+
+# OSR evaluation settings
+osr_eval:
+  eval_dataset: 'eval'  # Use the eval dataset configuration
+  fusion_config_path: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/fusion_config.json'
+  stats_path: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/stats.json'
+  prototypes_path: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/prototypes'
+  results_dir: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/evaluation'
 
 wandb:
   project: pointosr

@@ -17,3 +17,4 @@ pointosr/model/exports/
 !pointosr/osr/prototypes/.gitkeep
 !pointosr/osr/calibration/.gitkeep 
 !pointosr/osr/metrics/.gitkeep
+pointosr/osr/evaluation/
