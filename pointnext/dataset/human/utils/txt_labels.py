@@ -40,19 +40,27 @@ def move_files_from_txt(txt_path, input_folder, output_folder):
         if not filename: # Skip empty lines potentially missed by initial strip
             continue
 
-        source_path = os.path.join(input_folder, filename)
-        dest_path = os.path.join(output_folder, filename)
+        # Handle both relative filenames and absolute paths
+        # If filename contains path separators, extract just the filename
+        if os.sep in filename or '/' in filename:
+            actual_filename = os.path.basename(filename)
+            print(f"Extracted filename from path: {actual_filename}")
+        else:
+            actual_filename = filename
+
+        source_path = os.path.join(input_folder, actual_filename)
+        dest_path = os.path.join(output_folder, actual_filename)
 
         if os.path.exists(source_path):
             try:
                 shutil.move(source_path, dest_path)
-                # print(f"Moved: {filename}") # Uncomment for verbose output
+                print(f"Moved: {actual_filename}") # Uncomment for verbose output
                 moved_count += 1
             except Exception as e:
-                print(f"Error moving {filename}: {e}")
+                print(f"Error moving {actual_filename}: {e}")
                 error_count += 1
         else:
-            # print(f"Not found in input folder: {filename}") # Uncomment for verbose output
+            print(f"Not found in input folder: {actual_filename}") # Uncomment for verbose output
             not_found_count += 1
 
     print("\n--- Summary ---")
@@ -61,13 +69,35 @@ def move_files_from_txt(txt_path, input_folder, output_folder):
     if error_count > 0:
         print(f"Errors during moving: {error_count}")
     print("-------------")
+    
+    # Debug: Check destination folder contents
+    print(f"\n--- Debug Info ---")
+    print(f"Destination folder: {output_folder}")
+    if os.path.exists(output_folder):
+        dest_files = os.listdir(output_folder)
+        print(f"Files in destination folder: {len(dest_files)}")
+        if len(dest_files) > 0:
+            print(f"First 5 files in destination: {dest_files[:5]}")
+    else:
+        print("Destination folder does not exist!")
+    
+    # Check source folder contents
+    print(f"\nSource folder: {input_folder}")
+    if os.path.exists(input_folder):
+        source_files = os.listdir(input_folder)
+        print(f"Files remaining in source folder: {len(source_files)}")
+        if len(source_files) > 0:
+            print(f"First 5 files remaining: {source_files[:5]}")
+    else:
+        print("Source folder does not exist!")
+    print("----------------")
 
 # --- Example Usage ---
 if __name__ == "__main__":
     # --- Configuration ---
-    text_file_list = 'data/eval_human/cluster_data_human_631_781.txt'     # CHANGE THIS: Path to your .txt file with filenames
-    source_directory = 'data/eval_human/all_clusters'    # CHANGE THIS: Folder containing the files to move
-    destination_directory = 'data/eval_human/human_clusters' # CHANGE THIS: Folder to move files into
+    text_file_list = 'D:/CMU_Research/Data/labeled_data/labelingforeval_human/ood_clusters.txt'     # CHANGE THIS: Path to your .txt file with filenames
+    source_directory = "D:/CMU_Research/Data/labeled_data/human_dataset1/human_clusters"    # CHANGE THIS: Folder containing the files to move
+    destination_directory = 'D:/CMU_Research/Data/labeled_data/human_dataset1/ood_clusters' # CHANGE THIS: Folder to move files into
     # -------------------
 
     # Basic validation before running
