@@ -5,140 +5,138 @@ import numpy as np
 from collections import defaultdict
 import random
 
-def create_splits(data_dirs, output_dir, train_ratio=0.65, val_ratio=0.175, test_ratio=0.175, seed=42):
-    random.seed(seed) 
+def create_splits(id_data_dirs, ood_data_dir, output_dir, seed=42):
+    """
+    ID data: 70/10/10/10 = Train/Val/Calib/Test
+    OOD data: 40/60 = Calib/Test
+    """
+    random.seed(seed)
     
-    all_train_files = []
-    all_val_files = []
-    all_test_files = []
+    print(f"ID data directories: {id_data_dirs}")
+    print(f"OOD data directory: {ood_data_dir}")
+    print(f"Output directory: {output_dir}")
     
-    total_bin_files_processed = 0
-
-    print(f"Processing data directories: {data_dirs}")
-    for data_dir in data_dirs:
-        print(f"\n--- Processing directory: {data_dir} ---")
-        
-        local_bin_filepaths = []
-        for root, _, files in os.walk(data_dir):
+    id_class_files = defaultdict(list)
+    
+    for id_data_dir in id_data_dirs:
+        for root, _, files in os.walk(id_data_dir):
             for file in files:
                 if file.endswith('.bin'):
-                    local_bin_filepaths.append(os.path.join(root, file))
-        
-        local_file_count = len(local_bin_filepaths)
-        
-        if local_file_count == 0:
-            print(f"Warning: No .bin files found in {data_dir}. Skipping.")
-            continue
-
-        print(f"Found {local_file_count} .bin files in {data_dir}.")
-        total_bin_files_processed += local_file_count
-
-        random.shuffle(local_bin_filepaths)
-        
-        local_train_size = int(local_file_count * train_ratio)
-        local_val_size = int(local_file_count * val_ratio)
-        local_test_size = local_file_count - local_train_size - local_val_size
-        
-        dir_train_filepaths = local_bin_filepaths[:local_train_size]
-        dir_val_filepaths = local_bin_filepaths[local_train_size : local_train_size + local_val_size]
-        dir_test_filepaths = local_bin_filepaths[local_train_size + local_val_size:]
-        
-        dir_train_files = [os.path.basename(f) for f in dir_train_filepaths]
-        dir_val_files = [os.path.basename(f) for f in dir_val_filepaths]
-        dir_test_files = [os.path.basename(f) for f in dir_test_filepaths]
-
-        all_train_files.extend(dir_train_files)
-        all_val_files.extend(dir_val_files)
-        all_test_files.extend(dir_test_files)
-        
-        print(f"Directory Split: {len(dir_train_files)} train, {len(dir_val_files)} val, {len(dir_test_files)} test files")
-
-    print(f"\n--- Aggregated Results ---")
+                    rel_path = os.path.relpath(root, id_data_dir)
+                    class_name = rel_path.split(os.sep)[0] if rel_path != '.' else 'unknown'
+                    id_class_files[class_name].append(os.path.join(root, file))
     
-    if total_bin_files_processed == 0:
-        print("Error: No .bin files found in any specified directory. No split files created.")
-        return
+    id_train_files = []
+    id_val_files = []
+    id_calib_files = []
+    id_test_files = []
+    
+    for class_name, filepaths in id_class_files.items():
+        random.shuffle(filepaths)
         
-    all_train_files.sort()
-    all_val_files.sort()
-    all_test_files.sort()
-
+        total_files = len(filepaths)
+        train_size = int(total_files * 0.70)
+        val_size = int(total_files * 0.10)
+        calib_size = int(total_files * 0.10)
+        test_size = total_files - train_size - val_size - calib_size
+        
+        if test_size < 0:
+            calib_size += test_size
+            test_size = 0
+        
+        class_train = filepaths[:train_size]
+        class_val = filepaths[train_size:train_size + val_size]
+        class_calib = filepaths[train_size + val_size:train_size + val_size + calib_size]
+        class_test = filepaths[train_size + val_size + calib_size:]
+        
+        id_train_files.extend([os.path.basename(f) for f in class_train])
+        id_val_files.extend([os.path.basename(f) for f in class_val])
+        id_calib_files.extend([os.path.basename(f) for f in class_calib])
+        id_test_files.extend([os.path.basename(f) for f in class_test])
+        
+        print(f"  Class '{class_name}' split: {len(class_train)} train, {len(class_val)} val, {len(class_calib)} calib, {len(class_test)} test")
+    
+    ood_filepaths = []
+    
+    for root, _, files in os.walk(ood_data_dir):
+        for file in files:
+            if file.endswith('.bin'):
+                ood_filepaths.append(os.path.join(root, file))
+    
+    random.shuffle(ood_filepaths)
+    
+    total_ood = len(ood_filepaths)
+    ood_calib_size = int(total_ood * 0.40)
+    ood_test_size = total_ood - ood_calib_size
+    
+    ood_calib_filepaths = ood_filepaths[:ood_calib_size]
+    ood_test_filepaths = ood_filepaths[ood_calib_size:]
+    
+    ood_calib_files = [os.path.basename(f) for f in ood_calib_filepaths]
+    ood_test_files = [os.path.basename(f) for f in ood_test_filepaths]
+    
+    print(f"OOD split: {len(ood_calib_files)} calib, {len(ood_test_files)} test")
+    
     os.makedirs(output_dir, exist_ok=True)
     
-    created_split_files = []
+    created_files = []
     
-    if train_ratio > 0:
-        train_file = os.path.join(output_dir, 'train_split.txt')
+    if id_train_files:
+        train_file = os.path.join(output_dir, 'id_train_split.txt')
         with open(train_file, 'w') as f:
-            for file in all_train_files:
+            for file in sorted(id_train_files):
                 f.write(f"{file}\n")
-        created_split_files.append(train_file)
-            
-    if val_ratio > 0:
-        val_file = os.path.join(output_dir, 'val_split.txt')
-        with open(val_file, 'w') as f:
-            for file in all_val_files:
-                f.write(f"{file}\n")
-        created_split_files.append(val_file)
-            
-    if test_ratio > 0:
-        test_file = os.path.join(output_dir, 'test_split.txt')
-        with open(test_file, 'w') as f:
-            for file in all_test_files:
-                 f.write(f"{file}\n")
-        created_split_files.append(test_file)
-
-    total_files_in_splits = len(all_train_files) + len(all_val_files) + len(all_test_files)
+        created_files.append(train_file)
     
-    print(f"Total .bin files processed across all directories: {total_bin_files_processed}")
-    print(f"Total files written to split lists: {total_files_in_splits}")
-
-    if total_files_in_splits != total_bin_files_processed:
-         print(f"Warning: Mismatch between total files processed ({total_bin_files_processed}) and files written to splits ({total_files_in_splits}).")
-
-    print(f"\n--- Final File Split Statistics ---")
-    if total_files_in_splits > 0:
-        print(f"Train files: {len(all_train_files)} ({len(all_train_files)/total_files_in_splits:.2%})")
-        print(f"Val files: {len(all_val_files)} ({len(all_val_files)/total_files_in_splits:.2%})")
-        print(f"Test files: {len(all_test_files)} ({len(all_test_files)/total_files_in_splits:.2%})")
-    else:
-        print("No files were assigned to splits.")
-
-    print(f"\nSplit files created at:")
-    if created_split_files:
-        for file_path in created_split_files:
-            print(f"- {file_path}")
-    else:
-        print("- None (all ratios were zero or no files found)")
+    if id_val_files:
+        val_file = os.path.join(output_dir, 'id_val_split.txt')
+        with open(val_file, 'w') as f:
+            for file in sorted(id_val_files):
+                f.write(f"{file}\n")
+        created_files.append(val_file)
+    
+    if id_calib_files:
+        id_calib_file = os.path.join(output_dir, 'id_calib_split.txt')
+        with open(id_calib_file, 'w') as f:
+            for file in sorted(id_calib_files):
+                f.write(f"{file}\n")
+        created_files.append(id_calib_file)
+    
+    if id_test_files:
+        id_test_file = os.path.join(output_dir, 'id_test_split.txt')
+        with open(id_test_file, 'w') as f:
+            for file in sorted(id_test_files):
+                f.write(f"{file}\n")
+        created_files.append(id_test_file)
+    
+    if ood_calib_files:
+        ood_calib_file = os.path.join(output_dir, 'ood_calib_split.txt')
+        with open(ood_calib_file, 'w') as f:
+            for file in sorted(ood_calib_files):
+                f.write(f"{file}\n")
+        created_files.append(ood_calib_file)
+    
+    if ood_test_files:
+        ood_test_file = os.path.join(output_dir, 'ood_test_split.txt')
+        with open(ood_test_file, 'w') as f:
+            for file in sorted(ood_test_files):
+                f.write(f"{file}\n")
+        created_files.append(ood_test_file)
+    
+    print(f"\nSplit files created:")
+    for file_path in created_files:
+        print(f"  - {file_path}")
 
 def main():
-    parser = argparse.ArgumentParser(description='Create train/val/test splits by processing .bin files within each directory independently.')
-    parser.add_argument('--data_dirs', type=str, nargs='+', required=True, help='Paths to the directories containing .bin files (specify one or more)')
-    parser.add_argument('--output_dir', type=str, default='splits', help='Path to save the split files (default: splits)')
-    parser.add_argument('--train_ratio', type=float, default=0.65, help='Ratio of files for training per directory (default: 0.65)')
-    parser.add_argument('--val_ratio', type=float, default=0.175, help='Ratio of files for validation per directory (default: 0.175)')
-    parser.add_argument('--test_ratio', type=float, default=0.175, help='Ratio of files for testing per directory (default: 0.175)')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility (default: 42)')
+    parser = argparse.ArgumentParser(description='Create splits for ID and OOD data')
+    parser.add_argument('--id_data', type=str, nargs='+', required=True)
+    parser.add_argument('--ood_data', type=str, required=True)
+    parser.add_argument('--output', type=str, default='splits')
+    parser.add_argument('--seed', type=int, default=42)
     
     args = parser.parse_args()
     
-    total_ratio = args.train_ratio + args.val_ratio + args.test_ratio
-    if abs(total_ratio - 1.0) > 1e-5:
-        print(f"Warning: The sum of ratios ({total_ratio:.4f}) is not 1.0. Normalizing ratios...")
-        norm_factor = total_ratio
-        args.train_ratio /= norm_factor
-        args.val_ratio /= norm_factor
-        args.test_ratio /= norm_factor
-        print(f"Normalized ratios: Train={args.train_ratio:.4f}, Val={args.val_ratio:.4f}, Test={args.test_ratio:.4f}")
-    
-    create_splits(
-        args.data_dirs,
-        args.output_dir,
-        args.train_ratio,
-        args.val_ratio,
-        args.test_ratio,
-        args.seed
-    )
+    create_splits(args.id_data, args.ood_data, args.output, args.seed)
 
 if __name__ == "__main__":
     main() 
