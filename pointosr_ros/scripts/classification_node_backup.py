@@ -180,7 +180,7 @@ class ClassificationNode:
                     
                     predictions_log.append(f"{topic_name}: '{class_name}'")
                     
-                    if class_name.lower() != "false":
+                    if class_name.lower() != "fp":
                         self._publish_individual_filtered_cluster(valid_msgs[i], filtered_count, stamp)
                         filtered_count += 1
                 

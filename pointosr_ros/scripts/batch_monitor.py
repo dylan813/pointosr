@@ -16,7 +16,7 @@ class BatchMonitor:
         self.total_batches = 0
         self.total_clusters_received = 0
         self.total_human_detections = 0
-        self.total_false_detections = 0
+        self.total_fp_detections = 0
         self.total_processing_errors = 0
         
         # Data loss tracking
@@ -43,14 +43,14 @@ class BatchMonitor:
         total_input = msg.total_input_clusters
         total_processed = msg.total_processed_clusters
         human_count = msg.human_count
-        false_count = msg.false_count
+        fp_count = msg.fp_count
         error_count = msg.processing_errors
         processing_time = msg.processing_time_sec
         
         # Update statistics
         self.total_clusters_received += total_processed
         self.total_human_detections += human_count
-        self.total_false_detections += false_count
+        self.total_fp_detections += fp_count
         self.total_processing_errors += error_count
         self.processing_times.append(processing_time)
         
@@ -66,7 +66,7 @@ class BatchMonitor:
         # Log batch summary
         rospy.loginfo(f"Batch {self.total_batches}: "
                      f"Expected={total_input}, Received={total_processed}, "
-                     f"Human={human_count}, False={false_count}, "
+                     f"Human={human_count}, FP={fp_count}, "
                      f"Errors={error_count}, Time={processing_time:.3f}s")
         
         # Alert on data loss
@@ -104,7 +104,7 @@ class BatchMonitor:
         rospy.loginfo(f"Total Batches Processed: {self.total_batches}")
         rospy.loginfo(f"Total Clusters Received: {self.total_clusters_received}")
         rospy.loginfo(f"Total Human Detections: {self.total_human_detections}")
-        rospy.loginfo(f"Total False Detections: {self.total_false_detections}")
+        rospy.loginfo(f"Total FP Detections: {self.total_fp_detections}")
         rospy.loginfo(f"Total Processing Errors: {self.total_processing_errors}")
         rospy.loginfo(f"Total Data Loss: {total_data_loss} clusters")
         rospy.loginfo(f"Average Processing Time: {avg_processing_time:.3f}s")
