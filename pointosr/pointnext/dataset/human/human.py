@@ -13,13 +13,13 @@ from pointnext.model.layers.subsample import fps
 class HumanDataset(Dataset):
     classes = [
         "human",
-        "false"
+        "fp"
     ]
     num_classes = len(classes)
 
     dir_to_class_idx = {
         "human_clusters": 0,
-        "false_clusters": 1,
+        "fp_clusters": 1,
     }
     idx_to_class = {v: k for k, v in dir_to_class_idx.items()}
 
@@ -40,7 +40,7 @@ class HumanDataset(Dataset):
         self._log_max_val = np.log1p(self._sensor_max)
 
         logging.info(f"Directory to class index mapping: {self.dir_to_class_idx}")
-        split_filename = os.path.join(data_dir, f"{split}_split.txt")
+        split_filename = os.path.join(data_dir, "splits", f"id_{split}_split.txt")
         if not os.path.isfile(split_filename):
             raise FileNotFoundError(f"Split file not found: {split_filename}")
 
