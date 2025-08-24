@@ -4,6 +4,12 @@ from torch import multiprocessing as mp
 from pointnext.classification.train import main as train
 from pointnext.utils import EasyConfig, dist_utils, find_free_port, generate_exp_directory, resume_exp_directory, Wandb
 
+# Import OSR evaluation
+try:
+    from pointnext.classification.osr_eval import main as osr_eval
+except ImportError:
+    osr_eval = None
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser('PointNext Classification')
@@ -53,6 +59,10 @@ if __name__ == "__main__":
 
     if cfg.mode == 'pretrain':
         main = pretrain
+    elif cfg.mode == 'osr_eval':
+        if osr_eval is None:
+            raise ImportError("OSR evaluation module not found. Please ensure osr_eval.py exists.")
+        main = osr_eval
     else:
         main = train
 

@@ -11,6 +11,7 @@ int32 total_input_clusters
 int32 total_processed_clusters
 int32 human_count
 int32 false_count
+int32 ood_count
 int32 processing_errors
 
 #debugging

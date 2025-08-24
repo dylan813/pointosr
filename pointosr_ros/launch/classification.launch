@@ -9,6 +9,12 @@
     <arg name="num_points" default="2048" />    <!-- Dependent on max point cloud size during training -->
     <arg name="max_cluster_topics" default="30" />
     <arg name="debug_logging" default="false" />   <!-- Enable detailed debug logging -->
+    
+    <!-- OSR (Open Set Recognition) Parameters -->
+    <arg name="enable_osr" default="true" />    <!-- Enable/disable OSR for OOD detection -->
+    <arg name="fusion_config_path" default="$(find pointosr)/osr/calibration/fusion_config.json" />
+    <arg name="stats_path" default="$(find pointosr)/osr/calibration/stats.json" />
+    <arg name="prototypes_path" default="$(find pointosr)/osr/prototypes" />
 
     <!-- Keep defaults -->
     <arg name="input_topic_prefix" default="/cluster_" />
@@ -24,5 +30,11 @@
         <param name="trigger_topic" value="$(arg trigger_topic)" />
         <param name="device" value="$(arg device)" />
         <param name="debug_logging" value="$(arg debug_logging)" />
+        
+        <!-- OSR Parameters -->
+        <param name="enable_osr" value="$(arg enable_osr)" />
+        <param name="fusion_config_path" value="$(arg fusion_config_path)" />
+        <param name="stats_path" value="$(arg stats_path)" />
+        <param name="prototypes_path" value="$(arg prototypes_path)" />
     </node>
 </launch> 
