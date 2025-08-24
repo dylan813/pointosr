@@ -35,8 +35,8 @@ datatransforms:
     angle: [0.0, 1.0, 0.0]
     gravity_dim: 1
 
-batch_size: 16
-val_batch_size: 4
+batch_size: 32
+val_batch_size: 32
 dataloader:
   num_workers: 6
 
