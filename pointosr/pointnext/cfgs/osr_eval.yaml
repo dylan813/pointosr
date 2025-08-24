@@ -1,0 +1,113 @@
+# OSR Evaluation Configuration
+# This config is specifically for evaluating the trained OSR system on the test dataset
+
+# Inherit base configuration
+defaults: ['default.yaml']
+
+# Override mode for evaluation
+mode: 'osr_eval'
+
+# Point to the trained model
+pretrained_path: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/log/cfgs/cfgs-train-pointnext-s-ngpus1-seed42-20250815-201349-EQzi4mHSZGtqBnqjezgvDh/checkpoint/cfgs-train-pointnext-s-ngpus1-seed42-20250815-201349-EQzi4mHSZGtqBnqjezgvDh_ckpt_best.pth'
+
+# Dataset configuration for evaluation
+dataset:
+  common:
+    NAME: HumanDataset
+    data_dir: '/home/cerlab/Documents/data/pointosr/human'
+  # Training dataset config (not used in eval but needed for compatibility)
+  train:
+    split: train
+  val:
+    split: val
+    num_points: 2048
+  test:
+    split: test
+  calibration:
+    split: cal
+    num_points: 2048
+  # Evaluation dataset (the actual test data)
+  eval:
+    NAME: HumanDataset
+    data_dir: '/home/cerlab/Documents/data/pointosr/eval_human'
+    split: test
+    num_points: 2048
+
+# Model configuration (should match training)
+num_points: 2048
+num_classes: 2
+
+# Model architecture (PointNeXt-S) - matches pointnext-s.yaml
+model:
+  NAME: BaseCls
+  encoder_args:
+    NAME: PointNextEncoder
+    blocks: [1, 1, 1, 1, 1, 1]
+    strides: [1, 2, 2, 2, 2, 1]
+    width: 32
+    in_channels: 4
+    sa_layers: 2
+    sa_use_res: True
+    radius: 0.15
+    radius_scaling: 1.5
+    nsample: 32
+    expansion: 4
+    aggr_args:
+      feature_type: 'dp_fj'
+      reduction: 'max'
+    group_args:
+      NAME: 'ballquery'
+      normalize_dp: True
+    conv_args:
+      order: conv-norm-act
+    act_args:
+      act: 'relu'
+    norm_args:
+      norm: 'bn'
+  cls_args: 
+    NAME: ClsHead
+    num_classes: 2
+    mlps: [512, 256]
+    norm_args: 
+      norm: 'bn1d'
+
+# Criterion (not used in eval but needed for model loading compatibility)
+criterion_args:
+  NAME: SmoothCrossEntropy
+  label_smoothing: 0.3
+
+# Data transforms for evaluation (no augmentation)
+datatransforms:
+  eval: [PointsToTensor, PointCloudCenterAndNormalize]
+  kwargs:
+    gravity_dim: 1
+
+# Evaluation batch size
+val_batch_size: 16
+
+# Dataloader settings
+dataloader:
+  num_workers: 4
+
+# OSR evaluation specific settings
+osr_eval:
+  eval_dataset: 'eval'  # Use the eval dataset configuration
+  fusion_config_path: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/fusion_config.json'
+  stats_path: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/stats.json'
+  prototypes_path: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/prototypes'
+  results_dir: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/evaluation'
+
+# Disable wandb for evaluation
+wandb:
+  use_wandb: False
+
+# Logging
+log_dir: 'osr_evaluation'
+root_dir: log/
+print_freq: 50
+
+# System settings
+seed: 42
+deterministic: True
+launcher: 'none'  # Single GPU evaluation
+local_rank: 0

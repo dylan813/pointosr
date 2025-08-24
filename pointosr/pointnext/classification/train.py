@@ -98,11 +98,18 @@ def main(gpu, cfg, profile=False):
                                            distributed=cfg.distributed
                                            )
     logging.info(f"length of validation dataset: {len(val_loader.dataset)}")
+    
+    # Build test loader - use eval dataset if in test mode and eval dataset is configured
+    test_split = 'test'
+    if cfg.mode == 'test' and hasattr(cfg, 'osr_eval') and cfg.osr_eval.get('eval_dataset'):
+        test_split = cfg.osr_eval.eval_dataset
+        logging.info(f"Using evaluation dataset: {test_split}")
+    
     test_loader = build_dataloader_from_cfg(cfg.get('val_batch_size', cfg.batch_size),
                                             cfg.dataset,
                                             cfg.dataloader,
                                             datatransforms_cfg=cfg.datatransforms,
-                                            split='test',
+                                            split=test_split,
                                             distributed=cfg.distributed
                                             )
     num_classes = val_loader.dataset.num_classes if hasattr(
