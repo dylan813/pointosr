@@ -46,7 +46,7 @@ class OSRDiagnostics:
             'total_input': msg.total_input_clusters,
             'processed': msg.total_processed_clusters,
             'human': msg.human_count,
-            'false': msg.false_count,
+            'fp': msg.fp_count,
             'ood': msg.ood_count,
             'errors': msg.processing_errors,
             'processing_time': msg.processing_time_sec,

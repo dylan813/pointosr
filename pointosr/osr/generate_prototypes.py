@@ -231,7 +231,7 @@ def main():
     logger.info(f"Model: {args.model_path}")
     logger.info(f"Config: {args.config_path}")
     logger.info(f"Data: {args.data_dir}")
-    logger.info(f"K_H (human): {args.k_human}, K_F (false): {args.k_false}")
+    logger.info(f"K_H (human): {args.k_human}, K_F (fp): {args.k_false}")
     
     # Create embedding extractor
     extractor = EmbeddingExtractor(args.model_path, args.config_path, args.device)
@@ -256,7 +256,7 @@ def main():
     
     # Generate false-positive prototypes (class 1)
     fp_prototypes, fp_sample_ids, fp_clusters = generate_class_prototypes(
-        embeddings, labels, sample_ids, class_idx=1, k_prototypes=args.k_false, class_name="false"
+        embeddings, labels, sample_ids, class_idx=1, k_prototypes=args.k_false, class_name="fp"
     )
     
     # Save human prototypes

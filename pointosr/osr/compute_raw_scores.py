@@ -253,7 +253,7 @@ def analyze_scores(results):
     logger.info(f"Cosine scores - min: {cosine_scores.min():.4f}, max: {cosine_scores.max():.4f}, mean: {cosine_scores.mean():.4f}")
     
     # Per-class statistics
-    for class_idx, class_name in enumerate(['human', 'false']):
+    for class_idx, class_name in enumerate(['human', 'fp']):
         class_mask = labels == class_idx
         if np.sum(class_mask) > 0:
             logger.info(f"\n{class_name.upper()} class (n={np.sum(class_mask)}):")
@@ -261,7 +261,7 @@ def analyze_scores(results):
             logger.info(f"  Cosine - mean: {cosine_scores[class_mask].mean():.4f}, std: {cosine_scores[class_mask].std():.4f}")
     
     # Prediction accuracy per class
-    for class_idx, class_name in enumerate(['human', 'false']):
+    for class_idx, class_name in enumerate(['human', 'fp']):
         class_mask = labels == class_idx
         if np.sum(class_mask) > 0:
             accuracy = (predictions[class_mask] == labels[class_mask]).mean()

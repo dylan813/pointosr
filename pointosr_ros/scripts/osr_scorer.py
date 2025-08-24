@@ -148,7 +148,7 @@ class OSRScorer:
                 # Compute cosine similarity to all human prototypes
                 similarities = cosine_similarity(embedding, self._human_prototypes)[0]
                 cosine_scores[i] = np.max(similarities)
-            else:  # False-positive class
+            else:  # FP class
                 # Compute cosine similarity to all FP prototypes
                 similarities = cosine_similarity(embedding, self._fp_prototypes)[0]
                 cosine_scores[i] = np.max(similarities)
@@ -175,7 +175,7 @@ class OSRScorer:
         normalized_energy = np.zeros_like(energy_np)
         normalized_cosine = np.zeros_like(cosine_np)
         
-        for class_idx in [0, 1]:  # Human, False
+        for class_idx in [0, 1]:  # Human, FP
             class_mask = predicted_np == class_idx
             if not np.any(class_mask):
                 continue
@@ -278,7 +278,7 @@ class OSRScorer:
             'ood_confidences': ood_confidences
         }
     
-    def get_class_name_with_ood(self, predicted_class, is_ood, class_names=['human', 'false']):
+    def get_class_name_with_ood(self, predicted_class, is_ood, class_names=['human', 'fp']):
         """
         Get class name including OOD detection.
         

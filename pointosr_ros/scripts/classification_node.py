@@ -216,7 +216,7 @@ class ClassificationNode:
         batch_result.total_input_clusters = expected_count
         batch_result.total_processed_clusters = 0
         batch_result.human_count = 0
-        batch_result.false_count = 0
+        batch_result.fp_count = 0
         batch_result.ood_count = 0
         batch_result.processing_errors = 0
         batch_result.processing_log = []
@@ -349,7 +349,7 @@ class ClassificationNode:
                     elif class_name.lower() == "ood":
                         batch_result.ood_count += 1
                     else:
-                        batch_result.false_count += 1
+                        batch_result.fp_count += 1
                     
                     # Logging
                     if self.enable_osr and is_ood:
@@ -400,19 +400,19 @@ class ClassificationNode:
             total_clusters = batch_result.total_input_clusters
             processed_clusters = batch_result.total_processed_clusters
             human_count = batch_result.human_count
-            false_count = batch_result.false_count
+            fp_count = batch_result.fp_count
             ood_count = batch_result.ood_count
             error_count = batch_result.processing_errors
             
             if self.enable_osr:
                 rospy.loginfo(f"Batch {batch_result.header.stamp}: "
                              f"Input={total_clusters}, Processed={processed_clusters}, "
-                             f"Human={human_count}, False={false_count}, OOD={ood_count}, "
+                             f"Human={human_count}, FP={fp_count}, OOD={ood_count}, "
                              f"Errors={error_count}, Time={batch_result.processing_time_sec:.3f}s")
             else:
                 rospy.loginfo(f"Batch {batch_result.header.stamp}: "
                              f"Input={total_clusters}, Processed={processed_clusters}, "
-                             f"Human={human_count}, False={false_count}, Errors={error_count}, "
+                             f"Human={human_count}, FP={fp_count}, Errors={error_count}, "
                              f"Time={batch_result.processing_time_sec:.3f}s")
             
             if rospy.get_param('~debug_logging', False):

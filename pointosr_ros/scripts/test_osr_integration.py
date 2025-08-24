@@ -74,12 +74,12 @@ def test_class_name_mapping(scorer):
     print("\n🧪 Testing Class Name Mapping...")
     
     try:
-        class_names = ['human', 'false']
+        class_names = ['human', 'fp']
         
         # Test cases: (predicted_class, is_ood, expected_result)
         test_cases = [
             (0, False, 'human'),
-            (1, False, 'false'),
+            (1, False, 'fp'),
             (0, True, 'ood'),
             (1, True, 'ood')
         ]
@@ -125,11 +125,11 @@ def test_message_compatibility():
         # Test batch message
         batch_msg = classification_batch()
         batch_msg.human_count = 1
-        batch_msg.false_count = 2
+        batch_msg.fp_count = 2
         batch_msg.ood_count = 1
         
         print("✅ Batch message with OOD count accessible")
-        print(f"   Counts - Human: {batch_msg.human_count}, False: {batch_msg.false_count}, OOD: {batch_msg.ood_count}")
+        print(f"   Counts - Human: {batch_msg.human_count}, FP: {batch_msg.fp_count}, OOD: {batch_msg.ood_count}")
         
         return True
         

@@ -299,7 +299,7 @@ def main():
     labels = np.array(scores_data['labels'])
     
     logger.info(f"Loaded {len(energy_norm)} samples")
-    logger.info(f"Class distribution - ID (Human): {np.sum(labels == 0)}, OOD (False): {np.sum(labels == 1)}")
+    logger.info(f"Class distribution - ID (Human): {np.sum(labels == 0)}, OOD (FP): {np.sum(labels == 1)}")
     
     # Validate score ranges
     logger.info(f"Energy scores - range: [{energy_norm.min():.3f}, {energy_norm.max():.3f}]")

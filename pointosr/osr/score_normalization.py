@@ -55,8 +55,8 @@ class PercentileNormalizer:
         self.normalizers[score_name] = {}
         
         # Fit normalizer for each class
-        for class_idx in [0, 1]:  # Human, False
-            class_name = 'human' if class_idx == 0 else 'false'
+        for class_idx in [0, 1]:  # Human, FP
+            class_name = 'human' if class_idx == 0 else 'fp'
             class_mask = labels == class_idx
             class_scores = scores[class_mask]
             
@@ -152,7 +152,7 @@ def analyze_normalization_quality(raw_scores, normalized_scores, labels, predict
     logger.info(f"Normalized - range: [{normalized_scores.min():.4f}, {normalized_scores.max():.4f}], mean: {normalized_scores.mean():.4f}")
     
     # Per-class analysis
-    for class_idx, class_name in enumerate(['human', 'false']):
+    for class_idx, class_name in enumerate(['human', 'fp']):
         # Use predicted classes for normalization analysis (as in real inference)
         pred_mask = predictions == class_idx
         if not np.any(pred_mask):
@@ -213,7 +213,7 @@ def main():
     predictions = np.array(scores_data['predictions'])
     
     logger.info(f"Loaded {len(energy_scores)} samples from calibration set")
-    logger.info(f"Class distribution - Human: {np.sum(labels == 0)}, False: {np.sum(labels == 1)}")
+    logger.info(f"Class distribution - Human: {np.sum(labels == 0)}, FP: {np.sum(labels == 1)}")
     logger.info(f"Prediction accuracy: {(predictions == labels).mean():.4f}")
     
     # Initialize normalizer
@@ -271,11 +271,11 @@ def main():
         'normalization_method': 'per_class_percentile_to_[0,1]',
         'energy_score_normalization': {
             'human_class': normalizer.normalizers['energy'][0],
-            'false_class': normalizer.normalizers['energy'][1]
+            'fp_class': normalizer.normalizers['energy'][1]
         },
         'cosine_score_normalization': {
             'human_class': normalizer.normalizers['cosine'][0], 
-            'false_class': normalizer.normalizers['cosine'][1]
+            'fp_class': normalizer.normalizers['cosine'][1]
         },
         'quality_metrics': {
             'energy_rank_correlation': energy_analysis['rank_correlation'],
