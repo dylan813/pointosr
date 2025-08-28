@@ -326,7 +326,7 @@ class ClassificationNode:
                     cluster_result.pointcloud = msg
                     cluster_result.class_name = class_name
                     cluster_result.confidence = confidence
-                    cluster_result.is_human = (class_name.lower() == "human")
+                    cluster_result.is_human = (class_name.lower() == "human" or class_name.lower() == "ood")
                     
                     # OSR fields
                     cluster_result.is_ood = is_ood
