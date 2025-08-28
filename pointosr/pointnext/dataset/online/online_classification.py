@@ -7,7 +7,7 @@ class OnlineDataloader:
     # add classes used in training
     classes = [
         "human",
-        "false"
+        "fp"
     ]
 
     def __init__(self, num_points=2048, device='cuda'):
