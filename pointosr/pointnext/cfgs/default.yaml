@@ -2,7 +2,7 @@
 dataset:
   common:
     NAME: HumanDataset
-    data_dir: '/home/cerlab/Documents/data/pointosr/human'
+    data_dir: '/home/cerlab/Documents/dl/pointosr/data/dataset1'
   train:
     split: train
   val:
