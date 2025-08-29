@@ -135,18 +135,73 @@ class HumanDataset(Dataset):
         return pts
 
     def _extract_per_point_features(self, points):
-        xyz = points[:, :3]
-        geom_features = self.geom_extractor.extract_features(xyz)
-        fpfh_features = self.fpfh_extractor.extract_features(xyz)
-
-        global_features = np.concatenate([
-            geom_features,
-            fpfh_features,
-        ], axis=0)
-        assert global_features.shape[0] == 28, f"Expected 28 features, got {global_features.shape[0]}"
-
         num_points = points.shape[0]
-        per_point_features = np.tile(global_features, (num_points, 1))
+        
+        xyz = points[:, :3]
+        
+        distances = np.linalg.norm(xyz, axis=1, keepdims=True)
+        
+        height = xyz[:, 2:3]
+        
+        from sklearn.neighbors import NearestNeighbors
+        k_neighbors = min(10, num_points-1)
+        if k_neighbors > 0:
+            nbrs = NearestNeighbors(n_neighbors=k_neighbors, algorithm='ball_tree').fit(xyz)
+            distances_to_neighbors, _ = nbrs.kneighbors(xyz)
+            local_density = 1.0 / (np.mean(distances_to_neighbors, axis=1, keepdims=True) + 1e-6)
+        else:
+            local_density = np.ones((num_points, 1))
+        
+        if k_neighbors > 1:
+            local_curvature = np.std(distances_to_neighbors, axis=1, keepdims=True)
+        else:
+            local_curvature = np.zeros((num_points, 1))
+        
+        xy_distances = np.linalg.norm(xyz[:, :2], axis=1, keepdims=True)
+        angle_xy = np.arctan2(height, xy_distances + 1e-6)
+        
+        xz_distances = np.linalg.norm(xyz[:, [0, 2]], axis=1, keepdims=True)
+        angle_xz = np.arctan2(xyz[:, 1:2], xz_distances + 1e-6)
+        
+        xyz_normalized = (xyz - np.mean(xyz, axis=0)) / (np.std(xyz, axis=0) + 1e-6)
+        
+        r = np.linalg.norm(xyz, axis=1, keepdims=True)
+        theta = np.arccos(np.clip(xyz[:, 2:3] / (r + 1e-6), -1, 1))
+        phi = np.arctan2(xyz[:, 1:2], xyz[:, 0:1] + 1e-6)
+        
+        if k_neighbors > 1:
+            mean_neighbor_dist = np.mean(distances_to_neighbors, axis=1, keepdims=True)
+            std_neighbor_dist = np.std(distances_to_neighbors, axis=1, keepdims=True)
+            min_neighbor_dist = np.min(distances_to_neighbors, axis=1, keepdims=True)
+            max_neighbor_dist = np.max(distances_to_neighbors, axis=1, keepdims=True)
+        else:
+            mean_neighbor_dist = np.zeros((num_points, 1))
+            std_neighbor_dist = np.zeros((num_points, 1))
+            min_neighbor_dist = np.zeros((num_points, 1))
+            max_neighbor_dist = np.zeros((num_points, 1))
+        
+        centroid = np.mean(xyz, axis=0)
+        dist_from_centroid = np.linalg.norm(xyz - centroid, axis=1, keepdims=True)
+        
+        height_rel = height - centroid[2]
+        
+        radial_xy = np.linalg.norm(xyz[:, :2] - centroid[:2], axis=1, keepdims=True)
+        
+        per_point_features = np.concatenate([
+            local_density,
+            local_curvature,
+            angle_xy,
+            angle_xz,
+            xyz_normalized,
+            theta, phi,
+            mean_neighbor_dist,
+            std_neighbor_dist,
+            min_neighbor_dist,
+            max_neighbor_dist,
+            dist_from_centroid,
+            height_rel,
+            radial_xy,
+        ], axis=1)
         
         return per_point_features
 
