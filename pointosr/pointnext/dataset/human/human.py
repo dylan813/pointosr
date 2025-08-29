@@ -11,6 +11,28 @@ from pointnext.features.geometry_features import GeometryFeatureExtractor
 from pointnext.features.fpfh_features import FPFHFeatureExtractor
 
 
+def pointnext_collate_fn(batch):
+    batch_size = len(batch)
+    
+    num_points = batch[0]['pos'].shape[0]
+    num_features = batch[0]['x'].shape[1]
+    
+    pos_batch = torch.zeros(batch_size, num_points, 3)
+    x_batch = torch.zeros(batch_size, num_points, num_features)
+    y_batch = torch.zeros(batch_size, dtype=torch.long)
+    
+    for i, data in enumerate(batch):
+        pos_batch[i] = data['pos']
+        x_batch[i] = data['x']
+        y_batch[i] = data['y']
+    
+    return {
+        'pos': pos_batch,
+        'x': x_batch,
+        'y': y_batch
+    }
+
+
 @DATASETS.register_module()
 class HumanDataset(Dataset):
     classes = [
@@ -33,18 +55,19 @@ class HumanDataset(Dataset):
         super().__init__()
         self.data_dir = data_dir
         self.partition = split
-        self.transform = transform
         self.num_points = num_points
-        self.classes = HumanDataset.classes
+        self.transform = transform
         self.uniform_sample = uniform_sample
         
+        self.collate_fn = pointnext_collate_fn
+
         class Config:
             def __init__(self):
                 class Geometry:
                     def __init__(self):
                         self.normal_radius = 0.15
                         self.eigen_radii = [0.15]
-                        self.fpfh_radii = [0.20]
+                        self.fpfh_radii = [0.2]
                         self.min_neighbors = 25
                         self.fpfh_pca_k = 6
                         self.density_adaptive = True
@@ -111,6 +134,22 @@ class HumanDataset(Dataset):
             return pts[idx]
         return pts
 
+    def _extract_per_point_features(self, points):
+        xyz = points[:, :3]
+        geom_features = self.geom_extractor.extract_features(xyz)
+        fpfh_features = self.fpfh_extractor.extract_features(xyz)
+
+        global_features = np.concatenate([
+            geom_features,
+            fpfh_features,
+        ], axis=0)
+        assert global_features.shape[0] == 28, f"Expected 28 features, got {global_features.shape[0]}"
+
+        num_points = points.shape[0]
+        per_point_features = np.tile(global_features, (num_points, 1))
+        
+        return per_point_features
+
     def __getitem__(self, idx):
         filename = self.file_list[idx]
         label = self.label_list[idx]
@@ -125,15 +164,13 @@ class HumanDataset(Dataset):
             sampled_points = self._sample_points(points)
 
         pos = sampled_points[:, :3]
-        data = {'pos': torch.from_numpy(pos).float(),
-                'y': torch.tensor(label).long(),
-               }
+        per_point_features = self._extract_per_point_features(sampled_points)
         
-        geom_features = self.geom_extractor.extract_features(pos)
-        fpfh_features = self.fpfh_extractor.extract_features(pos)
-        minimal_features = np.concatenate([geom_features, fpfh_features])
-        data['minimal_features'] = torch.from_numpy(minimal_features).float().unsqueeze(0)
-        data['x'] = data['minimal_features']
+        data = {
+            'pos': torch.from_numpy(pos).float(),
+            'y': torch.tensor(label).long(),
+            'x': torch.from_numpy(per_point_features).float()
+        }
 
         if self.transform is not None:
             try:
