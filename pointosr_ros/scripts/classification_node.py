@@ -42,6 +42,7 @@ class ClassificationNode:
         fusion_config_path = rospy.get_param('~fusion_config_path', '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/fusion_config.json')
         stats_path = rospy.get_param('~stats_path', '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/stats.json')
         prototypes_path = rospy.get_param('~prototypes_path', '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/prototypes')
+        debug_logging = rospy.get_param('~debug_logging', True)  # Enable debug logging by default
 
         try:
             self.processor = OnlineDataloader(num_points=num_points, device=device)
@@ -62,6 +63,22 @@ class ClassificationNode:
             self.enable_osr = enable_osr
             if self.enable_osr:
                 try:
+                    rospy.loginfo(f"Initializing OSR scorer with:")
+                    rospy.loginfo(f"  Fusion config: {fusion_config_path}")
+                    rospy.loginfo(f"  Stats path: {stats_path}")
+                    rospy.loginfo(f"  Prototypes path: {prototypes_path}")
+                    
+                    # Check if files exist
+                    import os
+                    if not os.path.exists(fusion_config_path):
+                        raise FileNotFoundError(f"Fusion config file not found: {fusion_config_path}")
+                    if not os.path.exists(stats_path):
+                        raise FileNotFoundError(f"Stats file not found: {stats_path}")
+                    if not os.path.exists(prototypes_path):
+                        raise FileNotFoundError(f"Prototypes directory not found: {prototypes_path}")
+                    
+                    rospy.loginfo("All OSR configuration files found")
+                    
                     self.osr_scorer = OSRScorer(
                         fusion_config_path=fusion_config_path,
                         stats_path=stats_path,
@@ -75,6 +92,10 @@ class ClassificationNode:
                     rospy.loginfo(f"Target TPR: {self.osr_scorer.target_tpr:.3f}")
                 except Exception as e:
                     rospy.logerr(f"Failed to initialize OSR scorer: {e}")
+                    rospy.logerr(f"OSR init error type: {type(e)}")
+                    rospy.logerr(f"OSR init error details: {str(e)}")
+                    import traceback
+                    rospy.logerr(f"OSR init error traceback: {traceback.format_exc()}")
                     rospy.logwarn("Continuing without OSR - only standard classification will be available")
                     self.enable_osr = False
                     self.osr_scorer = None
@@ -112,6 +133,7 @@ class ClassificationNode:
         # Register hook on encoder
         if hasattr(self.model, 'encoder'):
             self.model.encoder.register_forward_hook(embedding_hook)
+            rospy.loginfo("Registered forward hook on encoder")
         else:
             rospy.logwarn("Model doesn't have 'encoder' attribute for OSR embedding extraction")
             
@@ -120,14 +142,40 @@ class ClassificationNode:
         
         def enhanced_forward(data):
             if hasattr(self.model, 'encoder'):
-                global_feat = self.model.encoder.forward_cls_feat(data)
-                self.current_embeddings = global_feat
-                logits = self.model.prediction(global_feat)
-                return logits, global_feat
+                try:
+                    global_feat = self.model.encoder.forward_cls_feat(data)
+                    self.current_embeddings = global_feat
+                    rospy.logdebug(f"Encoder output shape: {global_feat.shape}")
+                    
+                    if hasattr(self.model, 'prediction'):
+                        logits = self.model.prediction(global_feat)
+                        rospy.logdebug(f"Prediction output shape: {logits.shape}")
+                    else:
+                        rospy.logwarn("Model doesn't have 'prediction' attribute")
+                        logits = global_feat  # Fallback
+                    
+                    rospy.logdebug(f"Enhanced forward: logits shape {logits.shape}, embeddings shape {global_feat.shape}")
+                    return logits, global_feat
+                except Exception as e:
+                    rospy.logerr(f"Error in enhanced forward: {e}")
+                    # Fallback to original forward - but return as tuple for consistency
+                    original_output = original_forward(data)
+                    if isinstance(original_output, tuple):
+                        return original_output
+                    else:
+                        # Original forward returns single tensor, but we need tuple for OSR
+                        return original_output, None
             else:
-                return original_forward(data)
+                rospy.logwarn("No encoder found, using original forward method")
+                original_output = original_forward(data)
+                if isinstance(original_output, tuple):
+                    return original_output
+                else:
+                    # Original forward returns single tensor, but we need tuple for OSR
+                    return original_output, None
         
         self.model.forward = enhanced_forward
+        rospy.loginfo("Model forward method overridden for OSR embedding extraction")
 
     def _setup_subscriber(self, index):
         topic_name = f"{self.input_topic_prefix}{index}"
@@ -282,18 +330,71 @@ class ClassificationNode:
             with torch.no_grad():
                 if self.enable_osr and self.osr_scorer is not None:
                     # OSR-enabled forward pass - get both logits and embeddings
-                    logits, embeddings = self.model(model_data)
-                    pred_indices = torch.argmax(logits, dim=1)
-                    confidences = torch.softmax(logits, dim=1)
-                    
-                    # Perform OSR scoring
-                    osr_results = self.osr_scorer.score_batch(logits, embeddings)
+                    try:
+                        model_output = self.model(model_data)
+                        rospy.logdebug(f"Model output type: {type(model_output)}, length: {len(model_output) if isinstance(model_output, tuple) else 'N/A'}")
+                        if isinstance(model_output, tuple) and len(model_output) == 2:
+                            logits, embeddings = model_output
+                            rospy.logdebug(f"Successfully unpacked logits shape: {logits.shape}, embeddings shape: {embeddings.shape}")
+                        else:
+                            rospy.logerr(f"Model returned unexpected output type: {type(model_output)}. Expected tuple of (logits, embeddings)")
+                            # Fallback to standard classification
+                            logits = model_output if not isinstance(model_output, tuple) else model_output[0]
+                            embeddings = None
+                            osr_results = None
+                        pred_indices = torch.argmax(logits, dim=1)
+                        confidences = torch.softmax(logits, dim=1)
+                        
+                        # Perform OSR scoring only if we have embeddings
+                        if embeddings is not None:
+                            try:
+                                osr_results = self.osr_scorer.score_batch(logits, embeddings)
+                                rospy.logdebug(f"OSR scoring successful, results keys: {list(osr_results.keys())}")
+                            except Exception as osr_e:
+                                rospy.logerr(f"OSR scoring failed: {osr_e}")
+                                rospy.logerr(f"OSR error type: {type(osr_e)}")
+                                rospy.logerr(f"OSR error details: {str(osr_e)}")
+                                import traceback
+                                rospy.logerr(f"OSR error traceback: {traceback.format_exc()}")
+                                osr_results = None
+                        else:
+                            rospy.logwarn("No embeddings available for OSR scoring")
+                            osr_results = None
+                    except Exception as e:
+                        rospy.logerr(f"Error in OSR forward pass: {e}")
+                        # Fallback to standard classification
+                        try:
+                            fallback_output = self.model(model_data)
+                            if isinstance(fallback_output, tuple):
+                                logits = fallback_output[0]  # Take first element if tuple
+                            else:
+                                logits = fallback_output
+                            pred_indices = torch.argmax(logits, dim=1)
+                            confidences = torch.softmax(logits, dim=1)
+                            osr_results = None
+                        except Exception as fallback_e:
+                            rospy.logerr(f"Fallback classification also failed: {fallback_e}")
+                            # Create empty results to prevent further errors
+                            batch_result.processing_log.append(f"Critical error: Both OSR and fallback classification failed")
+                            self._publish_batch_result(batch_result, start_time)
+                            return
                 else:
                     # Standard forward pass - get only logits
-                    logits = self.model(model_data)
-                    pred_indices = torch.argmax(logits, dim=1)
-                    confidences = torch.softmax(logits, dim=1)
-                    osr_results = None
+                    try:
+                        model_output = self.model(model_data)
+                        if isinstance(model_output, tuple):
+                            logits = model_output[0]  # Take first element if tuple
+                        else:
+                            logits = model_output
+                        pred_indices = torch.argmax(logits, dim=1)
+                        confidences = torch.softmax(logits, dim=1)
+                        osr_results = None
+                    except Exception as e:
+                        rospy.logerr(f"Standard forward pass failed: {e}")
+                        # Create empty results to prevent further errors
+                        batch_result.processing_log.append(f"Critical error: Standard classification failed")
+                        self._publish_batch_result(batch_result, start_time)
+                        return
                 
                 for i in range(pred_indices.shape[0]):
                     class_idx = pred_indices[i].item()
@@ -326,7 +427,7 @@ class ClassificationNode:
                     cluster_result.pointcloud = msg
                     cluster_result.class_name = class_name
                     cluster_result.confidence = confidence
-                    cluster_result.is_human = (class_name.lower() == "human" or class_name.lower() == "ood")
+                    cluster_result.is_human = (class_name.lower() == "human")
                     
                     # OSR fields
                     cluster_result.is_ood = is_ood
