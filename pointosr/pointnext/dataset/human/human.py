@@ -76,8 +76,6 @@ class HumanDataset(Dataset):
                 self.geometry = Geometry()
         
         config = Config()
-        self.geom_extractor = GeometryFeatureExtractor(config)
-        self.fpfh_extractor = FPFHFeatureExtractor(config)
 
         logging.info(f"Directory to class index mapping: {self.dir_to_class_idx}")
         split_filename = os.path.join(data_dir, "splits", f"id_{split}_split.txt")
