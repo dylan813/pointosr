@@ -7,6 +7,8 @@ import json
 from torch.utils.data import Dataset
 from ..build import DATASETS
 from pointnext.model.layers.subsample import fps
+from pointnext.features.geometry_features import GeometryFeatureExtractor
+from pointnext.features.fpfh_features import FPFHFeatureExtractor
 
 
 @DATASETS.register_module()
@@ -36,8 +38,25 @@ class HumanDataset(Dataset):
         self.classes = HumanDataset.classes
         self.uniform_sample = uniform_sample
         
-        self._sensor_max = 65_535
-        self._log_max_val = np.log1p(self._sensor_max)
+        class Config:
+            def __init__(self):
+                class Geometry:
+                    def __init__(self):
+                        self.normal_radius = 0.15
+                        self.eigen_radii = [0.15]
+                        self.fpfh_radii = [0.20]
+                        self.min_neighbors = 25
+                        self.fpfh_pca_k = 6
+                        self.density_adaptive = True
+                        self.base_density = 2000
+                        self.min_radius = 0.05
+                        self.max_radius = 0.5
+                
+                self.geometry = Geometry()
+        
+        config = Config()
+        self.geom_extractor = GeometryFeatureExtractor(config)
+        self.fpfh_extractor = FPFHFeatureExtractor(config)
 
         logging.info(f"Directory to class index mapping: {self.dir_to_class_idx}")
         split_filename = os.path.join(data_dir, "splits", f"id_{split}_split.txt")
@@ -92,9 +111,6 @@ class HumanDataset(Dataset):
             return pts[idx]
         return pts
 
-    def _norm_intensity(self, ints: np.ndarray) -> np.ndarray:
-        return np.log1p(ints) / self._log_max_val
-
     def __getitem__(self, idx):
         filename = self.file_list[idx]
         label = self.label_list[idx]
@@ -109,13 +125,15 @@ class HumanDataset(Dataset):
             sampled_points = self._sample_points(points)
 
         pos = sampled_points[:, :3]
-        intensity_norm = self._norm_intensity(sampled_points[:, 3]).reshape(-1, 1)
-
         data = {'pos': torch.from_numpy(pos).float(),
                 'y': torch.tensor(label).long(),
                }
         
-        data['x'] = torch.cat((data['pos'], torch.from_numpy(intensity_norm).float()), dim=1)
+        geom_features = self.geom_extractor.extract_features(pos)
+        fpfh_features = self.fpfh_extractor.extract_features(pos)
+        minimal_features = np.concatenate([geom_features, fpfh_features])
+        data['minimal_features'] = torch.from_numpy(minimal_features).float().unsqueeze(0)
+        data['x'] = data['minimal_features']
 
         if self.transform is not None:
             try:
