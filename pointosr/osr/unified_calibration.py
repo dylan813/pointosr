@@ -362,19 +362,33 @@ def extract_logits_and_embeddings(model, dataset, batch_size=32, device='cuda'):
     model.eval()
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Extracting features"):
-            points = batch['point'].to(device)
-            labels = batch['label'].to(device)
-            
-            # Forward pass
-            outputs = model(points)
-            
-            if isinstance(outputs, dict):
-                logits = outputs['logits']
-                embeddings = outputs['embeddings']
+            # Handle new data structure: 'pos' and 'x' instead of 'point'
+            if 'pos' in batch and 'x' in batch:
+                # New data structure: pass as dictionary with pos and x
+                # Features need to be transposed from (B, N, F) to (B, F, N) for the model
+                points = {
+                    'pos': batch['pos'].to(device),  # (B, N, 3)
+                    'x': batch['x'].transpose(1, 2).to(device)  # (B, F, N) - transposed
+                }
+            elif 'point' in batch:
+                # Old data structure
+                points = batch['point'].to(device)
             else:
-                logits = outputs
-                # For models without explicit embeddings, use last layer features
-                embeddings = model.get_embeddings(points) if hasattr(model, 'get_embeddings') else logits
+                raise KeyError(f"Expected 'pos'/'x' or 'point' in batch, got: {batch.keys()}")
+            
+            # Handle label key
+            if 'y' in batch:
+                labels = batch['y'].to(device)
+            elif 'label' in batch:
+                labels = batch['label'].to(device)
+            else:
+                raise KeyError(f"Expected 'y' or 'label' in batch, got: {batch.keys()}")
+            
+            # Forward pass - extract both logits and embeddings
+            # Get embeddings from encoder before classification head
+            embeddings = model.encoder.forward_cls_feat(points)  # (B, C) - global features
+            # Get logits through the full model
+            logits = model(points)  # (B, num_classes)
             
             all_logits.append(logits.cpu())
             all_embeddings.append(embeddings.cpu())
@@ -448,6 +462,25 @@ def compute_ece(probs, labels, n_bins=15):
 
 def save_results(fusion_config, calibration_results, output_dir):
     """Save all calibration results."""
+    # Convert numpy types to Python native types for JSON serialization
+    def convert_numpy_types(obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {key: convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_numpy_types(item) for item in obj]
+        else:
+            return obj
+    
+    # Convert both configs
+    fusion_config = convert_numpy_types(fusion_config)
+    calibration_results = convert_numpy_types(calibration_results)
+    
     # Save fusion config
     fusion_config_path = os.path.join(output_dir, 'fusion_config.json')
     with open(fusion_config_path, 'w') as f:
