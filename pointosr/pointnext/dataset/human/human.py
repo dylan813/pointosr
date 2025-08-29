@@ -7,8 +7,6 @@ import json
 from torch.utils.data import Dataset
 from ..build import DATASETS
 from pointnext.model.layers.subsample import fps
-from pointnext.features.geometry_features import GeometryFeatureExtractor
-from pointnext.features.fpfh_features import FPFHFeatureExtractor
 
 
 def pointnext_collate_fn(batch):
