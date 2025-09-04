@@ -55,3 +55,9 @@ CUDA_VISIBLE_DEVICES=0 python pointnext/classification/main.py --cfg pointnext/c
 cd pointosr/pointosr
 CUDA_VISIBLE_DEVICES=0 python pointnext/eval/profile.py --cfg pointnext/cfgs/pointnext-s.yaml batch_size=128 num_points=1024 timing=True flops=True
 ```
+## Docker
+```bash
+cd pointosr_ws/src/pointosr
+sudo docker build -t pointosr-gpu .
+sudo docker run --rm -it --gpus all pointosr-gpu bash
+```
