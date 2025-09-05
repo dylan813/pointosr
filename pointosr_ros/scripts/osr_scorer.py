@@ -168,39 +168,60 @@ class OSRScorer:
             normalized_energy: (N,) array of normalized energy scores [0,1]
             normalized_cosine: (N,) array of normalized cosine scores [0,1]
         """
-        energy_np = energy_scores.cpu().numpy() if torch.is_tensor(energy_scores) else energy_scores
-        cosine_np = cosine_scores.cpu().numpy() if torch.is_tensor(cosine_scores) else cosine_scores
-        predicted_np = predicted_classes.cpu().numpy() if torch.is_tensor(predicted_classes) else predicted_classes
-        
-        normalized_energy = np.zeros_like(energy_np)
-        normalized_cosine = np.zeros_like(cosine_np)
-        
-        for class_idx in [0, 1]:  # Human, FP
-            class_mask = predicted_np == class_idx
-            if not np.any(class_mask):
-                continue
+        try:
+            energy_np = energy_scores.cpu().numpy() if torch.is_tensor(energy_scores) else energy_scores
+            cosine_np = cosine_scores.cpu().numpy() if torch.is_tensor(cosine_scores) else cosine_scores
+            predicted_np = predicted_classes.cpu().numpy() if torch.is_tensor(predicted_classes) else predicted_classes
             
-            # Normalize Energy scores
-            if str(class_idx) in self._normalization_stats['energy']:
-                energy_normalizer = self._normalization_stats['energy'][str(class_idx)]
-                percentile_values = np.array(energy_normalizer['percentile_values'])
-                percentiles = np.array(energy_normalizer['percentiles'])
-                
-                class_energy = energy_np[class_mask]
-                normalized_percentiles = np.interp(class_energy, percentile_values, percentiles)
-                normalized_energy[class_mask] = np.clip(normalized_percentiles / 100.0, 0.0, 1.0)
+            logger.debug(f"Normalize scores - energy shape: {energy_np.shape}, cosine shape: {cosine_np.shape}, predictions shape: {predicted_np.shape}")
+            logger.debug(f"Available keys in normalization stats: {list(self._normalization_stats.keys())}")
             
-            # Normalize Cosine scores
-            if str(class_idx) in self._normalization_stats['cosine']:
-                cosine_normalizer = self._normalization_stats['cosine'][str(class_idx)]
-                percentile_values = np.array(cosine_normalizer['percentile_values'])
-                percentiles = np.array(cosine_normalizer['percentiles'])
+            normalized_energy = np.zeros_like(energy_np)
+            normalized_cosine = np.zeros_like(cosine_np)
+            
+            for class_idx in [0, 1]:  # Human, FP
+                class_mask = predicted_np == class_idx
+                if not np.any(class_mask):
+                    logger.debug(f"No samples for class {class_idx}")
+                    continue
                 
-                class_cosine = cosine_np[class_mask]
-                normalized_percentiles = np.interp(class_cosine, percentile_values, percentiles)
-                normalized_cosine[class_mask] = np.clip(normalized_percentiles / 100.0, 0.0, 1.0)
-        
-        return normalized_energy, normalized_cosine
+                logger.debug(f"Processing class {class_idx} with {np.sum(class_mask)} samples")
+                
+                # Normalize Energy scores
+                energy_key = f"energy_class_{class_idx}"
+                if energy_key in self._normalization_stats:
+                    logger.debug(f"Normalizing energy for class {class_idx}")
+                    energy_normalizer = self._normalization_stats[energy_key]
+                    values = np.array(energy_normalizer['values'])
+                    percentiles = np.array(energy_normalizer['percentiles'])
+                    
+                    class_energy = energy_np[class_mask]
+                    normalized_percentiles = np.interp(class_energy, values, percentiles)
+                    normalized_energy[class_mask] = np.clip(normalized_percentiles / 100.0, 0.0, 1.0)
+                else:
+                    logger.warning(f"No energy normalization stats for class {class_idx} (key: {energy_key})")
+                
+                # Normalize Cosine scores
+                cosine_key = f"cosine_class_{class_idx}"
+                if cosine_key in self._normalization_stats:
+                    logger.debug(f"Normalizing cosine for class {class_idx}")
+                    cosine_normalizer = self._normalization_stats[cosine_key]
+                    values = np.array(cosine_normalizer['values'])
+                    percentiles = np.array(cosine_normalizer['percentiles'])
+                    
+                    class_cosine = cosine_np[class_mask]
+                    normalized_percentiles = np.interp(class_cosine, values, percentiles)
+                    normalized_cosine[class_mask] = np.clip(normalized_percentiles / 100.0, 0.0, 1.0)
+                else:
+                    logger.warning(f"No cosine normalization stats for class {class_idx} (key: {cosine_key})")
+            
+            return normalized_energy, normalized_cosine
+        except Exception as e:
+            logger.error(f"Error in normalize_scores: {e}")
+            logger.error(f"Energy scores type: {type(energy_scores)}, shape: {energy_scores.shape if hasattr(energy_scores, 'shape') else 'N/A'}")
+            logger.error(f"Cosine scores type: {type(cosine_scores)}, shape: {cosine_scores.shape if hasattr(cosine_scores, 'shape') else 'N/A'}")
+            logger.error(f"Predicted classes type: {type(predicted_classes)}, shape: {predicted_classes.shape if hasattr(predicted_classes, 'shape') else 'N/A'}")
+            raise
     
     def compute_fused_scores(self, normalized_energy, normalized_cosine):
         """
@@ -249,34 +270,51 @@ class OSRScorer:
         Returns:
             osr_results: dict containing all OSR scores and decisions
         """
-        # Get predictions
-        predictions = torch.argmax(logits, dim=1)
-        
-        # Compute raw scores
-        energy_scores = self.compute_energy_score(logits)
-        cosine_scores = self.compute_cosine_score(embeddings, predictions)
-        
-        # Normalize scores
-        energy_norm, cosine_norm = self.normalize_scores(
-            energy_scores, cosine_scores, predictions
-        )
-        
-        # Compute fused scores
-        fused_scores = self.compute_fused_scores(energy_norm, cosine_norm)
-        
-        # Detect OOD samples
-        is_ood, ood_confidences = self.detect_ood(fused_scores)
-        
-        return {
-            'predictions': predictions.cpu().numpy(),
-            'energy_scores_raw': energy_scores.cpu().numpy(),
-            'cosine_scores_raw': cosine_scores.cpu().numpy(),
-            'energy_scores_normalized': energy_norm,
-            'cosine_scores_normalized': cosine_norm,
-            'fused_scores': fused_scores,
-            'is_ood': is_ood,
-            'ood_confidences': ood_confidences
-        }
+        try:
+            # Get predictions
+            predictions = torch.argmax(logits, dim=1)
+            logger.debug(f"Predictions shape: {predictions.shape}")
+            
+            # Compute raw scores
+            logger.debug("Computing energy scores...")
+            energy_scores = self.compute_energy_score(logits)
+            logger.debug(f"Energy scores shape: {energy_scores.shape}")
+            
+            logger.debug("Computing cosine scores...")
+            cosine_scores = self.compute_cosine_score(embeddings, predictions)
+            logger.debug(f"Cosine scores shape: {cosine_scores.shape}")
+            
+            # Normalize scores
+            logger.debug("Normalizing scores...")
+            energy_norm, cosine_norm = self.normalize_scores(
+                energy_scores, cosine_scores, predictions
+            )
+            logger.debug(f"Normalized energy shape: {energy_norm.shape}, cosine shape: {cosine_norm.shape}")
+            
+            # Compute fused scores
+            logger.debug("Computing fused scores...")
+            fused_scores = self.compute_fused_scores(energy_norm, cosine_norm)
+            logger.debug(f"Fused scores shape: {fused_scores.shape}")
+            
+            # Detect OOD samples
+            logger.debug("Detecting OOD samples...")
+            is_ood, ood_confidences = self.detect_ood(fused_scores)
+            logger.debug(f"OOD detection complete: {is_ood.shape}")
+            
+            return {
+                'predictions': predictions.cpu().numpy(),
+                'energy_scores_raw': energy_scores.cpu().numpy(),
+                'cosine_scores_raw': cosine_scores.cpu().numpy(),
+                'energy_scores_normalized': energy_norm,
+                'cosine_scores_normalized': cosine_norm,
+                'fused_scores': fused_scores,
+                'is_ood': is_ood,
+                'ood_confidences': ood_confidences
+            }
+        except Exception as e:
+            logger.error(f"Error in score_batch: {e}")
+            logger.error(f"Logits shape: {logits.shape}, embeddings shape: {embeddings.shape}")
+            raise
     
     def get_class_name_with_ood(self, predicted_class, is_ood, class_names=['human', 'fp']):
         """
