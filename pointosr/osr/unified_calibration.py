@@ -362,19 +362,27 @@ def extract_logits_and_embeddings(model, dataset, batch_size=32, device='cuda'):
     model.eval()
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Extracting features"):
-            points = batch['point'].to(device)
-            labels = batch['label'].to(device)
+            # Prepare input data for model
+            pos = batch['pos'].to(device)
+            x = batch['x'].to(device)
+            labels = batch['y'].to(device)
+            
+            # Prepare input for model (transpose for conv1d: batch, features, points)
+            data = {'pos': pos, 'x': x.transpose(1, 2).contiguous()}
             
             # Forward pass
-            outputs = model(points)
+            outputs = model(data)
             
             if isinstance(outputs, dict):
                 logits = outputs['logits']
                 embeddings = outputs['embeddings']
             else:
                 logits = outputs
-                # For models without explicit embeddings, use last layer features
-                embeddings = model.get_embeddings(points) if hasattr(model, 'get_embeddings') else logits
+                # For models without explicit embeddings, use the encoder output
+                # We need to get embeddings from the encoder before classification
+                with torch.no_grad():
+                    global_feat = model.encoder.forward_cls_feat(data)
+                    embeddings = global_feat
             
             all_logits.append(logits.cpu())
             all_embeddings.append(embeddings.cpu())
