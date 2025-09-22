@@ -11,7 +11,7 @@ dataset:
   test:
     split: test
   calibration:
-    split: cal
+    split: calib
     num_points: 2048
   # Evaluation dataset (separate from training)
   eval:
