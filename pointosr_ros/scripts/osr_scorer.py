@@ -80,7 +80,18 @@ class OSRScorer:
             fp_prototypes_path = os.path.join(self.prototypes_path, 'fp_k4', 'prototypes.npy')
             
             self._human_prototypes = np.load(human_prototypes_path)
-            self._fp_prototypes = np.load(fp_prototypes_path)
+            
+            # Handle case where FP prototypes might be empty (k_fp = 0)
+            if os.path.exists(fp_prototypes_path):
+                fp_prototypes = np.load(fp_prototypes_path)
+                if fp_prototypes.size == 0:
+                    # Empty array case (k_fp = 0)
+                    self._fp_prototypes = np.array([]).reshape(0, self._human_prototypes.shape[1])
+                else:
+                    self._fp_prototypes = fp_prototypes
+            else:
+                # Fallback: create empty array with correct shape
+                self._fp_prototypes = np.array([]).reshape(0, self._human_prototypes.shape[1])
             
             logger.info(f"Loaded OSR configurations:")
             logger.info(f"  Human prototypes: {self._human_prototypes.shape}")
@@ -149,9 +160,15 @@ class OSRScorer:
                 similarities = cosine_similarity(embedding, self._human_prototypes)[0]
                 cosine_scores[i] = np.max(similarities)
             else:  # FP class
-                # Compute cosine similarity to all FP prototypes
-                similarities = cosine_similarity(embedding, self._fp_prototypes)[0]
-                cosine_scores[i] = np.max(similarities)
+                # Handle case where there are no FP prototypes (k_fp = 0)
+                if len(self._fp_prototypes) == 0:
+                    # If no FP prototypes, use a default low similarity score
+                    # This represents uncertainty for FP predictions when no prototypes exist
+                    cosine_scores[i] = 0.0  # or some other default value
+                else:
+                    # Compute cosine similarity to all FP prototypes
+                    similarities = cosine_similarity(embedding, self._fp_prototypes)[0]
+                    cosine_scores[i] = np.max(similarities)
         
         return torch.tensor(cosine_scores, dtype=torch.float32)
     
