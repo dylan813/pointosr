@@ -325,13 +325,39 @@ def load_model(model_path, config_path, device='cuda'):
     
     return model, cfg
 
-def load_calibration_data(data_dir, calibration_metadata_path):
-    """Load calibration dataset from metadata."""
+def load_calibration_data(data_dir, splits_dir):
+    """Load calibration dataset from split files."""
     logger.info("📂 Loading calibration data...")
     
-    # Load calibration metadata
-    with open(calibration_metadata_path, 'r') as f:
-        cal_metadata = json.load(f)
+    # Load ID calibration split file
+    id_calib_file = os.path.join(splits_dir, 'id_calib_split.txt')
+    with open(id_calib_file, 'r') as f:
+        id_calib_samples = [line.strip() for line in f.readlines() if line.strip()]
+    
+    # Load OOD calibration split file
+    ood_calib_file = os.path.join(splits_dir, 'ood_calib_split.txt')
+    with open(ood_calib_file, 'r') as f:
+        ood_calib_samples = [line.strip() for line in f.readlines() if line.strip()]
+    
+    # Separate human and false-positive samples from ID calibration
+    cal_id_human = []
+    cal_id_fp = []
+    
+    for sample in id_calib_samples:
+        if sample.startswith('human_'):
+            cal_id_human.append(sample)
+        elif sample.startswith('fp_'):
+            cal_id_fp.append(sample)
+        else:
+            # Handle any other format - assume human
+            cal_id_human.append(sample)
+    
+    # Create metadata structure for compatibility
+    cal_metadata = {
+        'cal_id_human': cal_id_human,
+        'cal_id_fp': cal_id_fp,
+        'cal_ood': ood_calib_samples
+    }
     
     # Load calibration dataset
     cal_dataset = HumanDataset(
@@ -343,9 +369,9 @@ def load_calibration_data(data_dir, calibration_metadata_path):
     )
     
     logger.info(f"✅ Calibration dataset loaded: {len(cal_dataset)} samples")
-    logger.info(f"   ID Human samples: {len(cal_metadata['cal_id_human'])}")
-    logger.info(f"   ID False-positive samples: {len(cal_metadata['cal_id_fp'])}")
-    logger.info(f"   OOD samples: {len(cal_metadata['cal_ood'])}")
+    logger.info(f"   ID Human samples: {len(cal_id_human)}")
+    logger.info(f"   ID False-positive samples: {len(cal_id_fp)}")
+    logger.info(f"   OOD samples: {len(ood_calib_samples)}")
     
     return cal_dataset, cal_metadata
 
@@ -478,9 +504,9 @@ def main():
     parser.add_argument('--data_dir', type=str, 
                        default='/home/cerlab/Documents/data/pointosr/human',
                        help='Path to data directory')
-    parser.add_argument('--calibration_metadata', type=str,
-                       default='/home/cerlab/Documents/data/pointosr/human/calibration_selection.json',
-                       help='Path to calibration metadata JSON')
+    parser.add_argument('--splits_dir', type=str,
+                       default='/home/cerlab/Documents/data/pointosr/dataset/splits',
+                       help='Path to splits directory containing id_calib_split.txt and ood_calib_split.txt')
     parser.add_argument('--prototypes_path', type=str,
                        default='/home/cerlab/Documents/pointosr/pointosr/osr/prototypes',
                        help='Path to prototypes directory')
@@ -511,7 +537,7 @@ def main():
     
     # Step 1: Load model and data
     model, cfg = load_model(args.model_path, args.config_path, args.device)
-    cal_dataset, cal_metadata = load_calibration_data(args.data_dir, args.calibration_metadata)
+    cal_dataset, cal_metadata = load_calibration_data(args.data_dir, args.splits_dir)
     
     # Step 2: Extract features
     logits, embeddings, labels = extract_logits_and_embeddings(
@@ -614,10 +640,11 @@ def main():
             "energy": "higher_is_better",
             "cosine": "higher_is_better"
         },
-        "calibration_metadata": {
+        "calibration_data": {
             "model_path": args.model_path,
             "config_path": args.config_path,
             "data_dir": args.data_dir,
+            "splits_dir": args.splits_dir,
             "calibration_samples": len(cal_dataset),
             "metrics_before_calibration": metrics_before,
             "metrics_after_calibration": metrics_after

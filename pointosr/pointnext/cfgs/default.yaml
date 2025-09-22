@@ -97,7 +97,7 @@ osr:
   temperature_init: 1.0         # Initial temperature for calibration
   
   calibration_dir: '/home/cerlab/Documents/data/pointosr/human'
-  calibration_metadata: '/home/cerlab/Documents/data/pointosr/human/calibration_selection.json'
+  splits_dir: '/home/cerlab/Documents/data/pointosr/dataset/splits'
   
   output_dirs:
     prototypes: 'osr/prototypes'
