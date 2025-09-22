@@ -336,7 +336,7 @@ def load_calibration_data(data_dir, calibration_metadata_path):
     # Load calibration dataset
     cal_dataset = HumanDataset(
         data_dir=data_dir,
-        split='cal',
+        split='calib',
         num_points=2048,
         transform=None,  # No augmentation for calibration
         uniform_sample=False
