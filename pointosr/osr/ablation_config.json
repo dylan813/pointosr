@@ -1,0 +1,91 @@
+{
+  "ablation_study": {
+    "description": "K-means prototype ablation study",
+    "created": "2025-01-27",
+    "configurations": [
+      {
+        "name": "human_k4_fp_k0",
+        "human_prototypes": 4,
+        "fp_prototypes": 0,
+        "prototype_dirs": {
+          "human": "human_k4",
+          "fp": "fp_k0"
+        }
+      },
+      {
+        "name": "human_k4_fp_k1",
+        "human_prototypes": 4,
+        "fp_prototypes": 1,
+        "prototype_dirs": {
+          "human": "human_k4",
+          "fp": "fp_k1"
+        }
+      },
+      {
+        "name": "human_k4_fp_k2", 
+        "human_prototypes": 4,
+        "fp_prototypes": 2,
+        "prototype_dirs": {
+          "human": "human_k4",
+          "fp": "fp_k2"
+        }
+      },
+      {
+        "name": "human_k8_fp_k0",
+        "human_prototypes": 8,
+        "fp_prototypes": 0,
+        "prototype_dirs": {
+          "human": "human_k8",
+          "fp": "fp_k0"
+        }
+      },
+      {
+        "name": "human_k8_fp_k1",
+        "human_prototypes": 8,
+        "fp_prototypes": 1,
+        "prototype_dirs": {
+          "human": "human_k8",
+          "fp": "fp_k1"
+        }
+      },
+      {
+        "name": "human_k8_fp_k2",
+        "human_prototypes": 8,
+        "fp_prototypes": 2,
+        "prototype_dirs": {
+          "human": "human_k8",
+          "fp": "fp_k2"
+        }
+      },
+      {
+        "name": "human_k16_fp_k0",
+        "human_prototypes": 16,
+        "fp_prototypes": 0,
+        "prototype_dirs": {
+          "human": "human_k16",
+          "fp": "fp_k0"
+        }
+      },
+      {
+        "name": "human_k16_fp_k1",
+        "human_prototypes": 16,
+        "fp_prototypes": 1,
+        "prototype_dirs": {
+          "human": "human_k16",
+          "fp": "fp_k1"
+        }
+      },
+      {
+        "name": "human_k16_fp_k2",
+        "human_prototypes": 16,
+        "fp_prototypes": 2,
+        "prototype_dirs": {
+          "human": "human_k16",
+          "fp": "fp_k2"
+        }
+      }
+    ],
+    "total_configurations": 9,
+    "notes": "Each configuration will generate separate calibration and evaluation results. Includes 0 FP prototype configurations to test impact of no FP prototypes."
+  }
+}

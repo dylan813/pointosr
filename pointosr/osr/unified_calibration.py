@@ -120,9 +120,15 @@ class CosineScorer:
                 similarities = F.cosine_similarity(embedding, torch.from_numpy(self.human_prototypes).to(embedding.device), dim=1)
                 cosine_scores[i] = torch.max(similarities)
             else:  # False Positive
-                # Compute cosine to FP prototypes
-                similarities = F.cosine_similarity(embedding, torch.from_numpy(self.fp_prototypes).to(embedding.device), dim=1)
-                cosine_scores[i] = torch.max(similarities)
+                # Handle case where there are no FP prototypes (k_fp = 0)
+                if len(self.fp_prototypes) == 0:
+                    # If no FP prototypes, use a default low similarity score
+                    # This represents uncertainty for FP predictions when no prototypes exist
+                    cosine_scores[i] = 0.0
+                else:
+                    # Compute cosine to FP prototypes
+                    similarities = F.cosine_similarity(embedding, torch.from_numpy(self.fp_prototypes).to(embedding.device), dim=1)
+                    cosine_scores[i] = torch.max(similarities)
         
         return cosine_scores
 
@@ -399,8 +405,24 @@ def load_prototypes(prototypes_path):
     """Load pre-computed prototypes."""
     logger.info("📂 Loading prototypes...")
     
-    human_prototypes_path = os.path.join(prototypes_path, 'human_k6', 'prototypes.npy')
-    fp_prototypes_path = os.path.join(prototypes_path, 'fp_k4', 'prototypes.npy')
+    # Dynamically find the prototype directories
+    human_dirs = [d for d in os.listdir(prototypes_path) if d.startswith('human_k')]
+    fp_dirs = [d for d in os.listdir(prototypes_path) if d.startswith('fp_k')]
+    
+    if not human_dirs:
+        raise FileNotFoundError(f"No human prototype directories found in {prototypes_path}")
+    if not fp_dirs:
+        raise FileNotFoundError(f"No FP prototype directories found in {prototypes_path}")
+    
+    # Use the first (and should be only) directory of each type
+    human_dir = human_dirs[0]
+    fp_dir = fp_dirs[0]
+    
+    human_prototypes_path = os.path.join(prototypes_path, human_dir, 'prototypes.npy')
+    fp_prototypes_path = os.path.join(prototypes_path, fp_dir, 'prototypes.npy')
+    
+    logger.info(f"Loading human prototypes from: {human_prototypes_path}")
+    logger.info(f"Loading FP prototypes from: {fp_prototypes_path}")
     
     human_prototypes = np.load(human_prototypes_path)
     fp_prototypes = np.load(fp_prototypes_path)
@@ -454,17 +476,32 @@ def compute_ece(probs, labels, n_bins=15):
     
     return ece.item()
 
+def convert_numpy_types(obj):
+    """Convert numpy types to Python native types for JSON serialization."""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    else:
+        return obj
+
 def save_results(fusion_config, calibration_results, output_dir):
     """Save all calibration results."""
     # Save fusion config
     fusion_config_path = os.path.join(output_dir, 'fusion_config.json')
     with open(fusion_config_path, 'w') as f:
-        json.dump(fusion_config, f, indent=2)
+        json.dump(convert_numpy_types(fusion_config), f, indent=2)
     
     # Save calibration results
     results_path = os.path.join(output_dir, 'calibration_results.json')
     with open(results_path, 'w') as f:
-        json.dump(calibration_results, f, indent=2)
+        json.dump(convert_numpy_types(calibration_results), f, indent=2)
     
     logger.info(f"💾 Results saved to {output_dir}")
     return fusion_config_path, results_path

@@ -23,12 +23,13 @@ import json
 import numpy as np
 import torch
 import torch.nn as nn
+import argparse
 from torch import distributed as dist
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, roc_curve, confusion_matrix
 import matplotlib.pyplot as plt
 
-from pointnext.utils import load_checkpoint, setup_logger_dist, set_random_seed
+from pointnext.utils import load_checkpoint, setup_logger_dist, set_random_seed, EasyConfig
 from pointnext.dataset import build_dataloader_from_cfg
 from pointnext.model import build_model_from_cfg
 
@@ -65,12 +66,32 @@ class OSREvaluator:
             self.normalization_stats = json.load(f)
         logger.info("Loaded score normalization mappings")
         
-        # Load prototypes
-        human_prototypes_path = os.path.join(osr_eval_cfg.prototypes_path, 'human_k6', 'prototypes.npy')
-        fp_prototypes_path = os.path.join(osr_eval_cfg.prototypes_path, 'fp_k4', 'prototypes.npy')
+        # Load prototypes - dynamically find the prototype directories
+        human_dirs = [d for d in os.listdir(osr_eval_cfg.prototypes_path) if d.startswith('human_k')]
+        fp_dirs = [d for d in os.listdir(osr_eval_cfg.prototypes_path) if d.startswith('fp_k')]
+        
+        if not human_dirs:
+            raise FileNotFoundError(f"No human prototype directories found in {osr_eval_cfg.prototypes_path}")
+        if not fp_dirs:
+            raise FileNotFoundError(f"No FP prototype directories found in {osr_eval_cfg.prototypes_path}")
+        
+        # Use the first available directories (for ablation study, we'll pass the specific config path)
+        human_prototypes_path = os.path.join(osr_eval_cfg.prototypes_path, human_dirs[0], 'prototypes.npy')
+        fp_prototypes_path = os.path.join(osr_eval_cfg.prototypes_path, fp_dirs[0], 'prototypes.npy')
         
         self.human_prototypes = torch.from_numpy(np.load(human_prototypes_path)).float()
-        self.fp_prototypes = torch.from_numpy(np.load(fp_prototypes_path)).float()
+        
+        # Handle case where FP prototypes might be empty (k_fp = 0)
+        if os.path.exists(fp_prototypes_path):
+            fp_prototypes = np.load(fp_prototypes_path)
+            if fp_prototypes.size == 0:
+                # Empty array case (k_fp = 0)
+                self.fp_prototypes = torch.empty(0, self.human_prototypes.shape[1]).float()
+            else:
+                self.fp_prototypes = torch.from_numpy(fp_prototypes).float()
+        else:
+            # Fallback: create empty array with correct shape
+            self.fp_prototypes = torch.empty(0, self.human_prototypes.shape[1]).float()
         
         logger.info(f"Loaded prototypes: Human {self.human_prototypes.shape}, FP {self.fp_prototypes.shape}")
         
@@ -187,7 +208,11 @@ class OSREvaluator:
                     cosine_sims = torch.mm(emb_norm.unsqueeze(0), proto_norm.t()).squeeze()
                     
                     # Take max cosine similarity
-                    max_cosine = cosine_sims.max()
+                    if cosine_sims.numel() == 0:
+                        # Handle empty tensor case (no prototypes)
+                        max_cosine = torch.tensor(0.0)
+                    else:
+                        max_cosine = cosine_sims.max()
                     cosine_scores.append(max_cosine.item())
                 
                 # Store results
@@ -213,7 +238,10 @@ class OSREvaluator:
         normalized_cosine = np.zeros_like(cosine_scores)
         
         for class_idx in [0, 1]:  # Human, False
-            if str(class_idx) not in self.normalization_stats['energy']:
+            energy_key = f'energy_class_{class_idx}'
+            cosine_key = f'cosine_class_{class_idx}'
+            
+            if energy_key not in self.normalization_stats:
                 continue
                 
             class_mask = predictions == class_idx
@@ -221,8 +249,8 @@ class OSREvaluator:
                 continue
             
             # Normalize Energy scores
-            energy_normalizer = self.normalization_stats['energy'][str(class_idx)]
-            percentile_values = np.array(energy_normalizer['percentile_values'])
+            energy_normalizer = self.normalization_stats[energy_key]
+            percentile_values = np.array(energy_normalizer['values'])
             percentiles = np.array(energy_normalizer['percentiles'])
             
             class_energy = energy_scores[class_mask]
@@ -230,8 +258,8 @@ class OSREvaluator:
             normalized_energy[class_mask] = np.clip(normalized_percentiles / 100.0, 0.0, 1.0)
             
             # Normalize Cosine scores
-            cosine_normalizer = self.normalization_stats['cosine'][str(class_idx)]
-            percentile_values = np.array(cosine_normalizer['percentile_values'])
+            cosine_normalizer = self.normalization_stats[cosine_key]
+            percentile_values = np.array(cosine_normalizer['values'])
             percentiles = np.array(cosine_normalizer['percentiles'])
             
             class_cosine = cosine_scores[class_mask]
@@ -468,3 +496,42 @@ def main(gpu, cfg, profile=False):
         dist.destroy_process_group()
     
     return True
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser('PointNext OSR Evaluation')
+    parser.add_argument('--model_path', type=str, required=True, help='Path to trained model checkpoint')
+    parser.add_argument('--config_path', type=str, required=True, help='Path to model config file')
+    parser.add_argument('--data_dir', type=str, required=True, help='Path to dataset directory')
+    parser.add_argument('--calibration_metadata', type=str, required=True, help='Path to calibration metadata JSON')
+    parser.add_argument('--fusion_config_path', type=str, required=True, help='Path to fusion config JSON')
+    parser.add_argument('--stats_path', type=str, required=True, help='Path to stats JSON')
+    parser.add_argument('--prototypes_path', type=str, required=True, help='Path to prototypes directory')
+    parser.add_argument('--output_dir', type=str, required=True, help='Output directory for results')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for evaluation')
+    parser.add_argument('--device', type=str, default='cuda', help='Device to use (cuda/cpu)')
+    
+    args = parser.parse_args()
+    
+    # Load base config
+    cfg = EasyConfig()
+    cfg.load(args.config_path, recursive=True)
+    
+    # Override config with command line arguments
+    cfg.pretrained_path = args.model_path
+    cfg.dataset.common.data_dir = args.data_dir
+    cfg.batch_size = args.batch_size
+    cfg.device = args.device
+    
+    # Set OSR evaluation config
+    cfg.osr_eval = EasyConfig()
+    cfg.osr_eval.results_dir = args.output_dir
+    cfg.osr_eval.fusion_config_path = args.fusion_config_path
+    cfg.osr_eval.stats_path = args.stats_path
+    cfg.osr_eval.prototypes_path = args.prototypes_path
+    cfg.osr_eval.calibration_metadata = args.calibration_metadata
+    
+    # Set up logging
+    setup_logger_dist(cfg)
+    
+    # Run evaluation
+    main(0, cfg)
