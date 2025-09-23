@@ -12,9 +12,9 @@
     
     <!-- OSR (Open Set Recognition) Parameters -->
     <arg name="enable_osr" default="true" />    <!-- Enable/disable OSR for OOD detection -->
-    <arg name="fusion_config_path" default="$(find pointosr)/osr/calibration/fusion_config.json" />
-    <arg name="stats_path" default="$(find pointosr)/osr/calibration/stats.json" />
-    <arg name="prototypes_path" default="$(find pointosr)/osr/prototypes" />
+    <arg name="fusion_config_path" default="/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/fusion_config.json" />
+    <arg name="stats_path" default="/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/stats.json" />
+    <arg name="prototypes_path" default="/home/cerlab/Documents/data/osr/prototypes/human_k4_fp_k2" />
 
     <!-- Keep defaults -->
     <arg name="input_topic_prefix" default="/cluster_" />

@@ -13,7 +13,6 @@ dataset:
   calibration:
     split: calib
     num_points: 2048
-  # Evaluation dataset (separate from training)
   eval:
     NAME: HumanDataset
     data_dir: '/home/cerlab/Documents/data/pointosr/eval_human'
@@ -66,14 +65,6 @@ mode: 'train' # set to test for inference only, 'osr_eval' for OSR evaluation
 pretrained_path: null
 seed: 42
 
-# OSR evaluation settings
-osr_eval:
-  eval_dataset: 'eval'  # Use the eval dataset configuration
-  fusion_config_path: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/fusion_config.json'
-  stats_path: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/stats.json'
-  prototypes_path: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/prototypes'
-  results_dir: '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/evaluation'
-
 wandb:
   project: pointosr
   use_wandb: True
@@ -87,25 +78,6 @@ save_freq: -1
 launcher: 'mp'
 local_rank: 0
 deterministic: True
-
-# osr (open set recognition) default settings
-osr:
-  target_tpr: 0.99              # Target True Positive Rate for ID samples
-  K_H: 6                        # Number of human prototypes  
-  K_F: 4                        # Number of false-positive prototypes
-  fused_weights: [0.5, 0.5]     # Initial weights for [energy, cosine] fusion
-  temperature_init: 1.0         # Initial temperature for calibration
-  
-  calibration_dir: '/home/cerlab/Documents/data/pointosr/human'
-  splits_dir: '/home/cerlab/Documents/data/pointosr/dataset/splits'
-  
-  output_dirs:
-    prototypes: 'osr/prototypes'
-    calibration: 'osr/calibration' 
-    metrics: 'osr/metrics'
-    exports: 'model/exports'
-    checkpoints: 'model/checkpoints'
-
 
 checkpoint:
   save_path: 'model/checkpoints/osr_best.pth'  # OSR-specific checkpoint name
