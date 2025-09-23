@@ -32,9 +32,9 @@ class OSRScorer:
     """
     
     def __init__(self, 
-                 fusion_config_path='/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/fusion_config.json',
-                 stats_path='/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/stats.json',
-                 prototypes_path='/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/prototypes',
+                 fusion_config_path='/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/fusion_config.json',
+                 stats_path='/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/stats.json',
+                 prototypes_path='/home/cerlab/Documents/data/osr/prototypes/human_k4_fp_k2',
                  device='cuda'):
         """
         Initialize OSR scorer with cached configurations.
@@ -76,7 +76,7 @@ class OSRScorer:
                 self._normalization_stats = json.load(f)
             
             # Load prototypes
-            human_prototypes_path = os.path.join(self.prototypes_path, 'human_k6', 'prototypes.npy')
+            human_prototypes_path = os.path.join(self.prototypes_path, 'human_k4', 'prototypes.npy')
             fp_prototypes_path = os.path.join(self.prototypes_path, 'fp_k4', 'prototypes.npy')
             
             self._human_prototypes = np.load(human_prototypes_path)
@@ -198,9 +198,10 @@ class OSRScorer:
                 continue
             
             # Normalize Energy scores
-            if str(class_idx) in self._normalization_stats['energy']:
-                energy_normalizer = self._normalization_stats['energy'][str(class_idx)]
-                percentile_values = np.array(energy_normalizer['percentile_values'])
+            energy_key = f"energy_class_{class_idx}"
+            if energy_key in self._normalization_stats:
+                energy_normalizer = self._normalization_stats[energy_key]
+                percentile_values = np.array(energy_normalizer['values'])
                 percentiles = np.array(energy_normalizer['percentiles'])
                 
                 class_energy = energy_np[class_mask]
@@ -208,9 +209,10 @@ class OSRScorer:
                 normalized_energy[class_mask] = np.clip(normalized_percentiles / 100.0, 0.0, 1.0)
             
             # Normalize Cosine scores
-            if str(class_idx) in self._normalization_stats['cosine']:
-                cosine_normalizer = self._normalization_stats['cosine'][str(class_idx)]
-                percentile_values = np.array(cosine_normalizer['percentile_values'])
+            cosine_key = f"cosine_class_{class_idx}"
+            if cosine_key in self._normalization_stats:
+                cosine_normalizer = self._normalization_stats[cosine_key]
+                percentile_values = np.array(cosine_normalizer['values'])
                 percentiles = np.array(cosine_normalizer['percentiles'])
                 
                 class_cosine = cosine_np[class_mask]
@@ -266,34 +268,38 @@ class OSRScorer:
         Returns:
             osr_results: dict containing all OSR scores and decisions
         """
-        # Get predictions
-        predictions = torch.argmax(logits, dim=1)
+        try:
+            # Get predictions
+            predictions = torch.argmax(logits, dim=1)
+            
+            # Compute raw scores
+            energy_scores = self.compute_energy_score(logits)
+            cosine_scores = self.compute_cosine_score(embeddings, predictions)
         
-        # Compute raw scores
-        energy_scores = self.compute_energy_score(logits)
-        cosine_scores = self.compute_cosine_score(embeddings, predictions)
-        
-        # Normalize scores
-        energy_norm, cosine_norm = self.normalize_scores(
-            energy_scores, cosine_scores, predictions
-        )
-        
-        # Compute fused scores
-        fused_scores = self.compute_fused_scores(energy_norm, cosine_norm)
-        
-        # Detect OOD samples
-        is_ood, ood_confidences = self.detect_ood(fused_scores)
-        
-        return {
-            'predictions': predictions.cpu().numpy(),
-            'energy_scores_raw': energy_scores.cpu().numpy(),
-            'cosine_scores_raw': cosine_scores.cpu().numpy(),
-            'energy_scores_normalized': energy_norm,
-            'cosine_scores_normalized': cosine_norm,
-            'fused_scores': fused_scores,
-            'is_ood': is_ood,
-            'ood_confidences': ood_confidences
-        }
+            # Normalize scores
+            energy_norm, cosine_norm = self.normalize_scores(
+                energy_scores, cosine_scores, predictions
+            )
+            
+            # Compute fused scores
+            fused_scores = self.compute_fused_scores(energy_norm, cosine_norm)
+            
+            # Detect OOD samples
+            is_ood, ood_confidences = self.detect_ood(fused_scores)
+            
+            return {
+                'predictions': predictions.cpu().numpy(),
+                'energy_scores_raw': energy_scores.cpu().numpy(),
+                'cosine_scores_raw': cosine_scores.cpu().numpy(),
+                'energy_scores_normalized': energy_norm,
+                'cosine_scores_normalized': cosine_norm,
+                'fused_scores': fused_scores,
+                'is_ood': is_ood,
+                'ood_confidences': ood_confidences
+            }
+        except Exception as e:
+            print(f"OSR scoring error: {e}")
+            return None
     
     def get_class_name_with_ood(self, predicted_class, is_ood, class_names=['human', 'fp']):
         """

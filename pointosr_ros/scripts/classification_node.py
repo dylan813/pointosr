@@ -39,9 +39,9 @@ class ClassificationNode:
         
         # OSR parameters
         enable_osr = rospy.get_param('~enable_osr', True)
-        fusion_config_path = rospy.get_param('~fusion_config_path', '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/fusion_config.json')
-        stats_path = rospy.get_param('~stats_path', '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/calibration/stats.json')
-        prototypes_path = rospy.get_param('~prototypes_path', '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr/osr/prototypes')
+        fusion_config_path = rospy.get_param('~fusion_config_path', '/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/fusion_config.json')
+        stats_path = rospy.get_param('~stats_path', '/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/stats.json')
+        prototypes_path = rospy.get_param('~prototypes_path', '/home/cerlab/Documents/data/osr/prototypes/human_k4_fp_k2')
 
         try:
             self.processor = OnlineDataloader(num_points=num_points, device=device)
@@ -287,7 +287,14 @@ class ClassificationNode:
                     confidences = torch.softmax(logits, dim=1)
                     
                     # Perform OSR scoring
-                    osr_results = self.osr_scorer.score_batch(logits, embeddings)
+                    try:
+                        osr_results = self.osr_scorer.score_batch(logits, embeddings)
+                        if osr_results is None or 'energy_scores_raw' not in osr_results:
+                            rospy.logwarn("OSR scoring failed - falling back to standard classification")
+                            osr_results = None
+                    except Exception as e:
+                        rospy.logerr(f"OSR scoring error: {e}")
+                        osr_results = None
                 else:
                     # Standard forward pass - get only logits
                     logits = self.model(model_data)

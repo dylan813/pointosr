@@ -425,7 +425,7 @@ def load_prototypes(prototypes_path):
     """Load pre-computed prototypes."""
     logger.info("📂 Loading prototypes...")
     
-    human_prototypes_path = os.path.join(prototypes_path, 'human_k6', 'prototypes.npy')
+    human_prototypes_path = os.path.join(prototypes_path, 'human_k4', 'prototypes.npy')
     fp_prototypes_path = os.path.join(prototypes_path, 'fp_k4', 'prototypes.npy')
     
     human_prototypes = np.load(human_prototypes_path)

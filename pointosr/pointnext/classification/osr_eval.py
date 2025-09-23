@@ -66,7 +66,7 @@ class OSREvaluator:
         logger.info("Loaded score normalization mappings")
         
         # Load prototypes
-        human_prototypes_path = os.path.join(osr_eval_cfg.prototypes_path, 'human_k6', 'prototypes.npy')
+        human_prototypes_path = os.path.join(osr_eval_cfg.prototypes_path, 'human_k4', 'prototypes.npy')
         fp_prototypes_path = os.path.join(osr_eval_cfg.prototypes_path, 'fp_k4', 'prototypes.npy')
         
         self.human_prototypes = torch.from_numpy(np.load(human_prototypes_path)).float()
