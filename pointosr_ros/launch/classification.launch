@@ -1,35 +1,34 @@
 <launch>
-    <!-- ========== Launch classification with online calibration ========== -->
-    <!-- Config for PointNext model architecture -->
+    <!-- ========== Arguments ========== -->
+    <!-- Model architecture config-->
     <arg name="cfg_path" default="$(find pointosr)/pointnext/cfgs/pointnext-s.yaml" />
-    <!-- Model checkpoint directory-->
+    <!-- Model checkpoint -->
     <arg name="model_path" default="/home/cerlab/Documents/data/pointosr/ckpt/cfgs-train-pointnext-s-ngpus1-seed42-20250824-130842-fzwiyYEtV7a4GyHM2H48rq_ckpt_best.pth" />
-    
-    <!-- Dataset and calibration parameters -->
+    <!-- Dataset and calibration directories -->
     <arg name="data_dir" default="/home/cerlab/Documents/data/pointosr/dataset" />
     <arg name="calibration_cache_dir" default="src/pointosr/calib_cache" />
+
+    <!-- Calibration parameters -->
     <arg name="k_human" default="6" />
     <arg name="k_false" default="4" />
     <arg name="target_tpr" default="0.99" />
     
-    <!-- Parameters -->    
-    <arg name="num_points" default="2048" />    <!-- Dependent on max point cloud size during training -->
-    <arg name="max_cluster_topics" default="30" />
-    <arg name="debug_logging" default="false" />   <!-- Enable detailed debug logging -->
+    <!-- ROS parameters -->    
+    <arg name="num_points" default="2048" />    <!-- match to training point cloud size -->
+    <arg name="max_cluster_topics" default="32" />
+    <arg name="debug_logging" default="false" />
     
-    <!-- OSR (Open Set Recognition) Parameters -->
-    <arg name="enable_osr" default="true" />    <!-- Enable/disable OSR for OOD detection -->
-
     <!-- Keep defaults -->
+    <arg name="enable_osr" default="true" />
     <arg name="input_topic_prefix" default="/cluster_" />
     <arg name="trigger_topic" default="/motion_detector/cluster_batch" />
     <arg name="device" default="cuda" />
 
-    <!-- ========== Step 1: Run Online Calibration ========== -->
+    <!-- ========== Classification with online calibration ========== -->
+    <!-- Online calibration -->
     <node name="online_calibration" pkg="pointosr_ros" type="run_online_calibration.py" output="screen" required="false" args="--model_path $(arg model_path) --config_path $(arg cfg_path) --data_dir $(arg data_dir) --calibration_cache_dir $(arg calibration_cache_dir) --k_human $(arg k_human) --k_false $(arg k_false) --target_tpr $(arg target_tpr) --device $(arg device)" />
 
-    <!-- ========== Step 2: Launch Classification Node with Calibrated OSR ========== -->
-    <!-- This node will start only after calibration completes -->
+    <!-- Classification node -->
     <node name="pointosr_live_classification" pkg="pointosr_ros" type="classification_node.py" output="screen" required="true">
         <param name="cfg_path" value="$(arg cfg_path)" />
         <param name="model_path" value="$(arg model_path)" />
@@ -39,12 +38,8 @@
         <param name="trigger_topic" value="$(arg trigger_topic)" />
         <param name="device" value="$(arg device)" />
         <param name="debug_logging" value="$(arg debug_logging)" />
-        
-        <!-- Calibration parameters (must match calibration node) -->
         <param name="k_human" value="$(arg k_human)" />
         <param name="k_false" value="$(arg k_false)" />
-        
-        <!-- OSR Parameters - using cached calibration results -->
         <param name="enable_osr" value="$(arg enable_osr)" />
         <param name="fusion_config_path" value="$(arg calibration_cache_dir)/fusion_config.json" />
         <param name="stats_path" value="$(arg calibration_cache_dir)/stats.json" />
