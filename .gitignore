@@ -9,6 +9,8 @@ dist/
 *.egg-info/
 *.so
 
+calib_cache/
+
 pointosr/osr/prototypes/
 pointosr/osr/calibration/
 pointosr/osr/metrics/

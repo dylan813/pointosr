@@ -220,31 +220,26 @@ class FusionOptimizer:
         """Find optimal threshold for given TPR target."""
         if target_tpr is None:
             target_tpr = self.target_tpr
-            
-        # Sort scores and find threshold
-        sorted_indices = np.argsort(fused_scores)[::-1]  # Higher is better
-        sorted_scores = fused_scores[sorted_indices]
-        sorted_labels = labels[sorted_indices]
-        
-        # Find threshold that achieves target TPR
-        id_mask = sorted_labels == 0  # Human samples
-        if np.sum(id_mask) == 0:
+
+        # Extract scores for in-distribution (ID / human) samples only
+        id_mask = labels == 0
+        if not np.any(id_mask):
             return 0.5, 0.0, 0.0
-            
-        # Count how many ID samples we need to accept
-        n_id_samples = np.sum(id_mask)
-        n_accept = int(target_tpr * n_id_samples)
-        
-        if n_accept >= len(sorted_scores):
-            threshold = sorted_scores[-1] - 1e-6
-        else:
-            threshold = sorted_scores[n_accept]
-        
-        # Compute metrics
+
+        id_scores = fused_scores[id_mask]
+        id_scores_sorted = np.sort(id_scores)[::-1]  # Higher is better
+
+        n_id = len(id_scores_sorted)
+        n_accept = int(np.ceil(target_tpr * n_id))
+        n_accept = max(1, min(n_accept, n_id))
+
+        threshold = id_scores_sorted[n_accept - 1] - 1e-12  # Slightly below to include selected samples
+
+        # Compute metrics using the chosen threshold
         predictions = fused_scores >= threshold
-        tpr = np.sum((predictions == 1) & (labels == 0)) / np.sum(labels == 0)
-        fpr = np.sum((predictions == 1) & (labels == 1)) / np.sum(labels == 1)
-        
+        tpr = np.sum(predictions & (labels == 0)) / np.sum(labels == 0)
+        fpr = np.sum(predictions & (labels == 1)) / max(1, np.sum(labels == 1))
+
         return threshold, tpr, fpr
     
     def optimize(self, energy_norm, cosine_norm, labels):
@@ -421,12 +416,15 @@ def extract_logits_and_embeddings(model, dataset, batch_size=32, device='cuda'):
     logger.info(f"✅ Extracted features: {logits.shape}, {embeddings.shape}, {labels.shape}")
     return logits, embeddings, labels
 
-def load_prototypes(prototypes_path):
+def load_prototypes(prototypes_path, k_human=None, k_false=None):
     """Load pre-computed prototypes."""
     logger.info("📂 Loading prototypes...")
     
-    human_prototypes_path = os.path.join(prototypes_path, 'human_k4', 'prototypes.npy')
-    fp_prototypes_path = os.path.join(prototypes_path, 'fp_k4', 'prototypes.npy')
+    # Default to 4 if not provided for backward compatibility
+    k_h = 4 if k_human is None else int(k_human)
+    k_f = 4 if k_false is None else int(k_false)
+    human_prototypes_path = os.path.join(prototypes_path, f'human_k{k_h}', 'prototypes.npy')
+    fp_prototypes_path = os.path.join(prototypes_path, f'fp_k{k_f}', 'prototypes.npy')
     
     human_prototypes = np.load(human_prototypes_path)
     fp_prototypes = np.load(fp_prototypes_path)
@@ -602,6 +600,8 @@ def main():
     
     # Transform scores
     energy_norm = normalizer.transform(energy_scores.numpy(), predictions.numpy(), 'energy')
+    # Flip energy normalization so higher means better (ID) to match cosine
+    energy_norm = 1.0 - energy_norm
     cosine_norm = normalizer.transform(cosine_scores.numpy(), predictions.numpy(), 'cosine')
     
     logger.info(f"✅ Scores normalized:")

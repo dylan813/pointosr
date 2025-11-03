@@ -199,7 +199,7 @@ class OSRDiagnostics:
                 print("      3. Check if model and OSR configs match")
             
             print(f"\n📋 To adjust threshold, edit:")
-            print(f"   /home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/fusion_config.json")
+            print(f"   src/pointosr/tmp/pointosr_calibration_cache/fusion_config.json")
             print(f"   Change 'fused_threshold' value and restart the node")
 
 def main():
