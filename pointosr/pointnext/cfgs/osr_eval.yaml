@@ -26,16 +26,16 @@ dataloader:
 # OSR evaluation specific settings
 osr_eval:
   eval_dataset: 'eval'  # Use the eval dataset configuration
-  fusion_config_path: '/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/fusion_config.json'
-  stats_path: '/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/stats.json'
-  prototypes_path: '/home/cerlab/Documents/data/osr/prototypes/human_k4_fp_k2'
-  results_dir: '/home/cerlab/Documents/data/osr/evaluation'
+  fusion_config_path: 'src/pointosr/calib_cache/fusion_config.json'
+  stats_path: 'src/pointosr/calib_cache/stats.json'
+  prototypes_path: 'src/pointosr/calib_cache/prototypes'
+  results_dir: 'src/pointosr/calib_cache/evaluation'
 
 # OSR (open set recognition) settings
 osr:
   target_tpr: 0.99              # Target True Positive Rate for ID samples
-  K_H: 4                        # Number of human prototypes  
-  K_F: 2                        # Number of false-positive prototypes
+  K_H: 6                        # Number of human prototypes  
+  K_F: 4                        # Number of false-positive prototypes
   fused_weights: [0.5, 0.5]     # Initial weights for [energy, cosine] fusion
   temperature_init: 1.0         # Initial temperature for calibration
   

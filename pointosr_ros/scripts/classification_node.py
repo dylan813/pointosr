@@ -10,6 +10,7 @@ import threading
 from collections import OrderedDict
 import ros_numpy
 import time
+import json
 import sys
 import os
 
@@ -39,9 +40,20 @@ class ClassificationNode:
         
         # OSR parameters
         enable_osr = rospy.get_param('~enable_osr', True)
-        fusion_config_path = rospy.get_param('~fusion_config_path', '/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/fusion_config.json')
-        stats_path = rospy.get_param('~stats_path', '/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/stats.json')
-        prototypes_path = rospy.get_param('~prototypes_path', '/home/cerlab/Documents/data/osr/prototypes/human_k4_fp_k2')
+        fusion_config_path = rospy.get_param('~fusion_config_path', 'src/pointosr/calib_cache/fusion_config.json')
+        stats_path = rospy.get_param('~stats_path', 'src/pointosr/calib_cache/stats.json')
+        prototypes_path = rospy.get_param('~prototypes_path', 'src/pointosr/calib_cache/prototypes')
+
+        self.initial_fusion_config_path = fusion_config_path
+        self.initial_stats_path = stats_path
+        self.initial_prototypes_path = prototypes_path
+        self.calibration_stamp_path = None
+        self.calibration_lock_path = None
+        self.calibration_completed_at = None
+        self.calibration_refresh_lock = threading.Lock()
+        self.fusion_config_path = None
+        self.stats_path = None
+        self.prototypes_path = None
 
         try:
             self.processor = OnlineDataloader(num_points=num_points, device=device)
@@ -58,24 +70,43 @@ class ClassificationNode:
             self.class_names = cfg.get('classes', OnlineDataloader.classes)
             rospy.loginfo(f"Using classes: {self.class_names}")
             
-            # Initialize OSR scorer if enabled
+            # Initialize OSR scorer with online calibration results
             self.enable_osr = enable_osr
             if self.enable_osr:
                 try:
-                    self.osr_scorer = OSRScorer(
-                        fusion_config_path=fusion_config_path,
-                        stats_path=stats_path,
-                        prototypes_path=prototypes_path,
-                        device=device
+                    # Wait for calibration to complete
+                    rospy.loginfo("⏳ Waiting for online calibration to complete...")
+                    success, fusion_config_path, stats_path, prototypes_path, calibration_info = self._wait_for_calibration_completion(
+                        fusion_config_path, stats_path, prototypes_path
                     )
-                    # Setup embedding extraction for OSR
-                    self._setup_embedding_extraction()
-                    rospy.loginfo("OSR (Open Set Recognition) enabled")
-                    rospy.loginfo(f"OOD threshold: {self.osr_scorer.ood_threshold:.6f}")
-                    rospy.loginfo(f"Target TPR: {self.osr_scorer.target_tpr:.3f}")
+                    if success:
+                        rospy.loginfo("📁 Loading online calibration results...")
+                        self.osr_scorer = OSRScorer(
+                            fusion_config_path=fusion_config_path,
+                            stats_path=stats_path,
+                            prototypes_path=prototypes_path,
+                            device=device
+                        )
+                        self.fusion_config_path = fusion_config_path
+                        self.stats_path = stats_path
+                        self.prototypes_path = prototypes_path
+                        self.calibration_stamp_path = calibration_info.get('stamp_path') if calibration_info else None
+                        self.calibration_lock_path = calibration_info.get('lock_path') if calibration_info else None
+                        self.calibration_completed_at = calibration_info.get('completed_at') if calibration_info else None
+                        # Setup embedding extraction for OSR
+                        self._setup_embedding_extraction()
+                        rospy.loginfo("✅ OSR (Open Set Recognition) enabled with online calibration")
+                        rospy.loginfo(f"🎯 OOD threshold: {self.osr_scorer.ood_threshold:.6f}")
+                        rospy.loginfo(f"🎯 Target TPR: {self.osr_scorer.target_tpr:.3f}")
+                        rospy.loginfo(f"⚖️ Fusion weights: {self.osr_scorer.fusion_weights}")
+                    else:
+                        rospy.logwarn("⚠️ Online calibration failed or timed out!")
+                        rospy.logwarn("🔄 Falling back to standard classification (no OSR)")
+                        self.enable_osr = False
+                        self.osr_scorer = None
                 except Exception as e:
-                    rospy.logerr(f"Failed to initialize OSR scorer: {e}")
-                    rospy.logwarn("Continuing without OSR - only standard classification will be available")
+                    rospy.logerr(f"❌ Failed to initialize OSR scorer with online calibration: {e}")
+                    rospy.logwarn("🔄 Falling back to standard classification (no OSR)")
                     self.enable_osr = False
                     self.osr_scorer = None
             else:
@@ -100,6 +131,209 @@ class ClassificationNode:
 
         self.trigger_subscriber = rospy.Subscriber(trigger_topic, Header, self._trigger_callback)
         rospy.loginfo(f"Node ready. Listening for trigger on '{trigger_topic}'.")
+        if self.enable_osr:
+            rospy.loginfo("🎉 Online calibration successful - OSR enabled!")
+        else:
+            rospy.loginfo("ℹ️ Using standard classification (no OSR)")
+
+    def _wait_for_calibration_completion(self, fusion_config_path, stats_path, prototypes_path, timeout=300):
+        """Wait for calibration to complete by checking for required files.
+
+        Returns:
+            tuple: (success: bool, fusion_config_path: str, stats_path: str, prototypes_path: str)
+        """
+        # Get k_human and k_false parameters from ROS parameters
+        k_human = rospy.get_param('~k_human', 8)  # Default to 8 if not set
+        k_false = rospy.get_param('~k_false', 2)  # Default to 2 if not set
+        
+        # Resolve cache directory paths (same logic as calibration node)
+        cache_dir = os.path.dirname(fusion_config_path)
+        resolved_cache_dir = cache_dir
+        if not os.path.isabs(cache_dir):
+            # Find the pointosr repository root by traversing up from this file's location
+            current_dir = os.path.dirname(os.path.abspath(__file__))  # This file is in pointosr_ros/scripts/
+            pointosr_root = None
+
+            # Traverse up the directory tree looking for a directory containing 'pointosr' subdirectory
+            search_dir = current_dir
+            max_depth = 10  # Prevent infinite loops
+            depth = 0
+
+            while search_dir != '/' and depth < max_depth:
+                # Check if this directory contains a 'pointosr' subdirectory
+                if os.path.exists(os.path.join(search_dir, 'pointosr')):
+                    pointosr_root = search_dir
+                    break
+                search_dir = os.path.dirname(search_dir)
+                depth += 1
+
+            if pointosr_root:
+                # Handle relative paths that start with 'src/pointosr/'
+                if cache_dir.startswith('src/pointosr/'):
+                    # Remove 'src/pointosr/' prefix and append to pointosr root
+                    cache_subpath = cache_dir[13:]  # Remove 'src/pointosr/' prefix
+                    resolved_cache_dir = os.path.join(pointosr_root, cache_subpath)
+                else:
+                    # Use the relative path as-is from pointosr root
+                    resolved_cache_dir = os.path.join(pointosr_root, cache_dir)
+                
+                # Update all paths with resolved cache directory
+                fusion_config_path = os.path.join(resolved_cache_dir, os.path.basename(fusion_config_path))
+                stats_path = os.path.join(resolved_cache_dir, os.path.basename(stats_path))
+                prototypes_path = os.path.join(resolved_cache_dir, os.path.basename(prototypes_path))
+                
+                rospy.loginfo(f"Resolved cache directory to: {resolved_cache_dir}")
+            else:
+                rospy.logwarn(f"Could not find pointosr repository root, using relative paths")
+        
+        stamp_path = os.path.join(os.path.dirname(fusion_config_path), 'calibration_complete.stamp')
+        lock_path = f"{resolved_cache_dir}.lock"
+
+        required_files = [
+            fusion_config_path,
+            stats_path,
+            os.path.join(prototypes_path, f'human_k{k_human}', 'prototypes.npy'),
+            os.path.join(prototypes_path, f'fp_k{k_false}', 'prototypes.npy'),
+            stamp_path
+        ]
+        
+        start_time = time.time()
+        check_interval = 2.0  # Check every 2 seconds
+        
+        rospy.loginfo("🔍 Waiting for calibration files...")
+        
+        while time.time() - start_time < timeout:
+            all_files_exist = True
+            missing_files = []
+            
+            for file_path in required_files:
+                if not os.path.exists(file_path):
+                    all_files_exist = False
+                    missing_files.append(file_path)
+            
+            if all_files_exist:
+                # Validate K values in fusion_config match expected
+                try:
+                    with open(fusion_config_path, 'r') as f:
+                        cfg = json.load(f)
+                    cfg_kh = int(cfg.get('K_H', k_human))
+                    cfg_kf = int(cfg.get('K_F', k_false))
+                    if cfg_kh != k_human or cfg_kf != k_false:
+                        rospy.logwarn(f"K mismatch: fusion_config has (K_H={cfg_kh}, K_F={cfg_kf}) but params are (k_human={k_human}, k_false={k_false}). Waiting for matching files...")
+                        all_files_exist = False
+                except Exception as e:
+                    rospy.logwarn(f"Could not validate fusion_config K values: {e}")
+                    all_files_exist = False
+
+            if all_files_exist and os.path.exists(lock_path):
+                all_files_exist = False
+                missing_files.append(f"{lock_path} (calibration running)")
+
+            completed_at = None
+            if all_files_exist:
+                try:
+                    with open(stamp_path, 'r') as stamp_file:
+                        stamp_data = json.load(stamp_file)
+                    completed_at = float(stamp_data.get('completed_at', 0.0))
+                except Exception as e:
+                    rospy.logwarn(f"Could not read calibration completion stamp: {e}")
+                    all_files_exist = False
+
+            if all_files_exist:
+                rospy.loginfo("✅ All calibration files found!")
+                calibration_info = {
+                    'stamp_path': stamp_path,
+                    'lock_path': lock_path,
+                    'completed_at': completed_at
+                }
+                return True, fusion_config_path, stats_path, prototypes_path, calibration_info
+            
+            elapsed = time.time() - start_time
+            rospy.loginfo(f"⏳ Waiting for calibration... ({elapsed:.1f}s elapsed) Missing: {len(missing_files)} items")
+            for missing_file in missing_files:
+                rospy.logdebug(f"Missing file: {missing_file}")
+            
+            # Check if we're still within timeout
+            if elapsed >= timeout:
+                rospy.logwarn(f"⏰ Timeout waiting for calibration ({timeout}s)")
+                for missing_file in missing_files:
+                    rospy.logwarn(f"Missing: {missing_file}")
+                return False, fusion_config_path, stats_path, prototypes_path, None
+            
+            time.sleep(check_interval)
+        
+        return False, fusion_config_path, stats_path, prototypes_path, None
+
+    def _calibration_needs_refresh(self):
+        if not self.enable_osr:
+            return False
+
+        if self.osr_scorer is None:
+            return True
+
+        if self.calibration_lock_path and os.path.exists(self.calibration_lock_path):
+            return True
+
+        if not self.calibration_stamp_path:
+            return False
+
+        if not os.path.exists(self.calibration_stamp_path):
+            return True
+
+        try:
+            with open(self.calibration_stamp_path, 'r') as stamp_file:
+                stamp_data = json.load(stamp_file)
+            completed_at = float(stamp_data.get('completed_at', 0.0))
+        except Exception:
+            return True
+
+        if self.calibration_completed_at is None:
+            return True
+
+        return completed_at != self.calibration_completed_at
+
+    def _reload_osr_calibration(self):
+        success, fusion_config_path, stats_path, prototypes_path, calibration_info = self._wait_for_calibration_completion(
+            self.initial_fusion_config_path,
+            self.initial_stats_path,
+            self.initial_prototypes_path
+        )
+
+        if not success or calibration_info is None:
+            return False
+
+        self.osr_scorer = OSRScorer(
+            fusion_config_path=fusion_config_path,
+            stats_path=stats_path,
+            prototypes_path=prototypes_path,
+            device=self.device
+        )
+        self.fusion_config_path = fusion_config_path
+        self.stats_path = stats_path
+        self.prototypes_path = prototypes_path
+        self.calibration_stamp_path = calibration_info.get('stamp_path')
+        self.calibration_lock_path = calibration_info.get('lock_path')
+        self.calibration_completed_at = calibration_info.get('completed_at')
+        rospy.loginfo("✅ OSR calibration reloaded with latest results")
+        return True
+
+    def _ensure_latest_calibration(self):
+        if not self._calibration_needs_refresh():
+            return True
+
+        rospy.logwarn("⚠️ Calibration update detected — pausing until new results are ready")
+
+        with self.calibration_refresh_lock:
+            if not self._calibration_needs_refresh():
+                return True
+
+            success = self._reload_osr_calibration()
+            if not success:
+                rospy.logwarn("⚠️ Unable to refresh calibration — continuing without OSR")
+                self.osr_scorer = None
+                self.calibration_completed_at = None
+                return False
+            return True
 
     def _setup_embedding_extraction(self):
         """Setup model to extract both logits and embeddings for OSR."""
@@ -227,6 +461,17 @@ class ClassificationNode:
             self._publish_batch_result(batch_result, start_time)
             return
 
+        use_osr = False
+        if self.enable_osr:
+            osr_ready = self._ensure_latest_calibration()
+            if osr_ready and self.osr_scorer is not None:
+                use_osr = True
+            else:
+                if not osr_ready:
+                    rospy.logwarn("OSR calibration not ready — running standard classification for this batch")
+                else:
+                    rospy.logwarn("OSR scorer unavailable — running standard classification for this batch")
+
         batch_pos, batch_x, valid_indices, valid_msgs = [], [], [], []
         
         try:
@@ -280,7 +525,7 @@ class ClassificationNode:
             model_data = {'pos': pos_tensor, 'x': x_tensor.transpose(1, 2)}
             
             with torch.no_grad():
-                if self.enable_osr and self.osr_scorer is not None:
+                if use_osr:
                     # OSR-enabled forward pass - get both logits and embeddings
                     logits, embeddings = self.model(model_data)
                     pred_indices = torch.argmax(logits, dim=1)
@@ -309,7 +554,7 @@ class ClassificationNode:
                     msg, centroid, cluster_size = valid_msgs[i]
                     
                     # Determine final class name and OOD status
-                    if self.enable_osr and self.osr_scorer is not None and osr_results is not None:
+                    if use_osr and osr_results is not None:
                         is_ood = osr_results['is_ood'][i]
                         class_name = self.osr_scorer.get_class_name_with_ood(class_idx, is_ood, self.class_names)
                         
@@ -359,7 +604,7 @@ class ClassificationNode:
                         batch_result.fp_count += 1
                     
                     # Logging
-                    if self.enable_osr and is_ood:
+                    if use_osr and is_ood:
                         batch_result.processing_log.append(
                             f"Cluster {cluster_index}: '{class_name}' (conf: {confidence:.3f}, "
                             f"fused: {fused_score:.3f}, ood_conf: {ood_confidence:.3f})"
@@ -411,7 +656,7 @@ class ClassificationNode:
             ood_count = batch_result.ood_count
             error_count = batch_result.processing_errors
             
-            if self.enable_osr:
+            if self.enable_osr and self.osr_scorer is not None:
                 rospy.loginfo(f"Batch {batch_result.header.stamp}: "
                              f"Input={total_clusters}, Processed={processed_clusters}, "
                              f"Human={human_count}, FP={fp_count}, OOD={ood_count}, "

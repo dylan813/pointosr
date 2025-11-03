@@ -32,9 +32,9 @@ class OSRScorer:
     """
     
     def __init__(self, 
-                 fusion_config_path='/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/fusion_config.json',
-                 stats_path='/home/cerlab/Documents/data/osr/calibration/human_k4_fp_k2/stats.json',
-                 prototypes_path='/home/cerlab/Documents/data/osr/prototypes/human_k4_fp_k2',
+                 fusion_config_path='src/pointosr/calib_cache/fusion_config.json',
+                 stats_path='src/pointosr/calib_cache/stats.json',
+                 prototypes_path='src/pointosr/calib_cache/prototypes',
                  device='cuda'):
         """
         Initialize OSR scorer with cached configurations.
@@ -75,9 +75,22 @@ class OSRScorer:
             with open(self.stats_path, 'r') as f:
                 self._normalization_stats = json.load(f)
             
-            # Load prototypes
-            human_prototypes_path = os.path.join(self.prototypes_path, 'human_k4', 'prototypes.npy')
-            fp_prototypes_path = os.path.join(self.prototypes_path, 'fp_k4', 'prototypes.npy')
+            # Load prototypes using K values from fusion config if present
+            k_h = None
+            k_f = None
+            try:
+                if isinstance(self._fusion_config, dict):
+                    k_h = int(self._fusion_config.get('K_H')) if 'K_H' in self._fusion_config else None
+                    k_f = int(self._fusion_config.get('K_F')) if 'K_F' in self._fusion_config else None
+            except Exception:
+                k_h = None
+                k_f = None
+
+            human_dirname = f"human_k{k_h}" if k_h is not None else 'human_k8'
+            fp_dirname = f"fp_k{k_f}" if k_f is not None else 'fp_k2'
+
+            human_prototypes_path = os.path.join(self.prototypes_path, human_dirname, 'prototypes.npy')
+            fp_prototypes_path = os.path.join(self.prototypes_path, fp_dirname, 'prototypes.npy')
             
             self._human_prototypes = np.load(human_prototypes_path)
             
@@ -94,8 +107,8 @@ class OSRScorer:
                 self._fp_prototypes = np.array([]).reshape(0, self._human_prototypes.shape[1])
             
             logger.info(f"Loaded OSR configurations:")
-            logger.info(f"  Human prototypes: {self._human_prototypes.shape}")
-            logger.info(f"  FP prototypes: {self._fp_prototypes.shape}")
+            logger.info(f"  Human prototypes: {self._human_prototypes.shape} (dir: {human_dirname})")
+            logger.info(f"  FP prototypes: {self._fp_prototypes.shape} (dir: {fp_dirname})")
             
         except Exception as e:
             logger.error(f"Failed to load OSR configurations: {e}")
