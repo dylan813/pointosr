@@ -23,6 +23,70 @@ from pointnext.model import build_model_from_cfg
 from pointnext.dataset.online.online_classification import OnlineDataloader
 from osr_scorer import OSRScorer
 
+
+class TimingStats:
+    """Accumulator for timing statistics across batches."""
+    def __init__(self):
+        self.data_conversion_times = []
+        self.model_inference_times = []
+        self.osr_scoring_times = []
+        self.result_packaging_times = []
+        self.total_batch_times = []
+        self.num_clusters_processed = 0
+        self.num_batches = 0
+    
+    def add(self, data_conv, model, osr, packaging, total, num_clusters):
+        """Add timing measurements for a batch."""
+        self.data_conversion_times.append(data_conv)
+        self.model_inference_times.append(model)
+        self.osr_scoring_times.append(osr)
+        self.result_packaging_times.append(packaging)
+        self.total_batch_times.append(total)
+        self.num_clusters_processed += num_clusters
+        self.num_batches += 1
+    
+    def print_summary(self):
+        """Print timing summary statistics."""
+        if self.num_batches == 0:
+            print("\n" + "="*60)
+            print("PointOSR TIMING SUMMARY: No batches processed")
+            print("="*60 + "\n")
+            return
+        
+        # Convert to numpy arrays for statistics
+        data_conv = np.array(self.data_conversion_times) * 1000  # Convert to ms
+        model = np.array(self.model_inference_times) * 1000
+        osr = np.array(self.osr_scoring_times) * 1000
+        packaging = np.array(self.result_packaging_times) * 1000
+        total = np.array(self.total_batch_times) * 1000
+        
+        # Calculate percentages
+        mean_total = np.mean(total)
+        pct_data = (np.mean(data_conv) / mean_total) * 100 if mean_total > 0 else 0
+        pct_model = (np.mean(model) / mean_total) * 100 if mean_total > 0 else 0
+        pct_osr = (np.mean(osr) / mean_total) * 100 if mean_total > 0 else 0
+        pct_pkg = (np.mean(packaging) / mean_total) * 100 if mean_total > 0 else 0
+        
+        # Print summary
+        print("\n" + "="*60)
+        print("PointOSR TIMING SUMMARY")
+        print("="*60)
+        print(f"Total Batches: {self.num_batches}")
+        print(f"Total Clusters Processed: {self.num_clusters_processed}")
+        print(f"\nTiming Breakdown (mean ± stddev):")
+        print(f"  Total Batch Time:   {np.mean(total):6.1f} ± {np.std(total):5.1f} ms  (100.0%)")
+        print(f"  ├─ Data Conversion: {np.mean(data_conv):6.1f} ± {np.std(data_conv):5.1f} ms  ({pct_data:5.1f}%)")
+        print(f"  ├─ Model Inference: {np.mean(model):6.1f} ± {np.std(model):5.1f} ms  ({pct_model:5.1f}%)")
+        print(f"  ├─ OSR Scoring:     {np.mean(osr):6.1f} ± {np.std(osr):5.1f} ms  ({pct_osr:5.1f}%)")
+        print(f"  └─ Result Packaging:{np.mean(packaging):6.1f} ± {np.std(packaging):5.1f} ms  ({pct_pkg:5.1f}%)")
+        
+        if self.num_clusters_processed > 0:
+            per_cluster_time = (np.sum(total) / self.num_clusters_processed)
+            print(f"\nPer-Cluster Average: {per_cluster_time:.2f} ms/cluster")
+        
+        print("="*60 + "\n")
+
+
 class ClassificationNode:
     def __init__(self):
         rospy.init_node('pointosr_live_classification', anonymous=True)
@@ -55,6 +119,10 @@ class ClassificationNode:
         self.fusion_config_path = None
         self.stats_path = None
         self.prototypes_path = None
+        
+        # Initialize timing statistics
+        self.timing_stats = TimingStats()
+        rospy.on_shutdown(self._print_timing_summary)
 
         try:
             self.processor = OnlineDataloader(num_points=num_points, device=device)
@@ -100,6 +168,8 @@ class ClassificationNode:
                         rospy.loginfo(f"🎯 OOD threshold: {self.osr_scorer.ood_threshold:.6f}")
                         rospy.loginfo(f"🎯 Target TPR: {self.osr_scorer.target_tpr:.3f}")
                         rospy.loginfo(f"⚖️ Fusion weights: {self.osr_scorer.fusion_weights}")
+                        # Warm up GPU
+                        self._warmup_gpu()
                     else:
                         rospy.logwarn("⚠️ Online calibration failed or timed out!")
                         rospy.logwarn("🔄 Falling back to standard classification (no OSR)")
@@ -113,6 +183,8 @@ class ClassificationNode:
             else:
                 self.osr_scorer = None
                 rospy.loginfo("OSR disabled - using standard classification only")
+                # Warm up GPU even without OSR
+                self._warmup_gpu()
         except Exception as e:
             rospy.logerr(f"Failed to load model/config: {e}")
             rospy.signal_shutdown("Model loading failed.")
@@ -366,6 +438,32 @@ class ClassificationNode:
                 return original_forward(data)
         
         self.model.forward = enhanced_forward
+    
+    def _warmup_gpu(self, num_warmup_runs=10):
+        """Perform warm-up inference to initialize GPU kernels and memory."""
+        rospy.loginfo("🔥 Warming up GPU with dummy inference...")
+        
+        # Create dummy data matching expected input shape
+        dummy_pos = torch.randn(4, 2048, 3).to(self.device)  # 4 samples, 2048 points, 3D coords
+        dummy_x = torch.randn(4, 4, 2048).to(self.device)    # 4 samples, 4 features, 2048 points
+        dummy_data = {'pos': dummy_pos, 'x': dummy_x}
+        
+        with torch.no_grad():
+            for i in range(num_warmup_runs):
+                if self.enable_osr and self.osr_scorer is not None:
+                    # Warm up both model and OSR
+                    logits, embeddings = self.model(dummy_data)
+                    try:
+                        _ = self.osr_scorer.score_batch(logits, embeddings)
+                    except Exception:
+                        pass  # Ignore warmup errors
+                else:
+                    # Warm up model only
+                    _ = self.model(dummy_data)
+        
+        # Synchronize to ensure all operations complete
+        torch.cuda.synchronize()
+        rospy.loginfo(f"✅ GPU warm-up complete ({num_warmup_runs} runs)")
 
     def _setup_subscriber(self, index):
         topic_name = f"{self.input_topic_prefix}{index}"
@@ -448,6 +546,12 @@ class ClassificationNode:
     def _process_batch(self, msgs, topic_list, stamp, expected_count):
         start_time = time.time()
         
+        # Initialize timing accumulators
+        data_conversion_time = 0.0
+        model_inference_time = 0.0
+        osr_scoring_time = 0.0
+        result_packaging_time = 0.0
+        
         batch_result = classification_batch()
         batch_result.header.stamp = stamp
         batch_result.header.frame_id = "classification_batch"
@@ -462,7 +566,9 @@ class ClassificationNode:
         
         if not msgs:
             batch_result.processing_log.append(f"No messages received for stamp {stamp}")
-            self._publish_batch_result(batch_result, start_time)
+            self._publish_batch_result(batch_result, start_time, 
+                                      data_conversion_time, model_inference_time, 
+                                      osr_scoring_time, result_packaging_time)
             return
 
         use_osr = False
@@ -477,6 +583,9 @@ class ClassificationNode:
                     rospy.logwarn("OSR scorer unavailable — running standard classification for this batch")
 
         batch_pos, batch_x, valid_indices, valid_msgs = [], [], [], []
+        
+        # Start timing data conversion
+        t_data_start = time.time()
         
         try:
             for i, msg in enumerate(msgs):
@@ -518,15 +627,23 @@ class ClassificationNode:
                     batch_result.processing_log.append(f"Cluster {cluster_index}: Processing error - {str(e)}")
 
             batch_result.total_processed_clusters = len(valid_msgs)
+            
+            # End timing data conversion
+            data_conversion_time = time.time() - t_data_start
 
             if not batch_pos:
                 batch_result.processing_log.append(f"All {len(msgs)} clusters failed preprocessing")
-                self._publish_batch_result(batch_result, start_time)
+                self._publish_batch_result(batch_result, start_time,
+                                          data_conversion_time, model_inference_time,
+                                          osr_scoring_time, result_packaging_time)
                 return 
 
             pos_tensor = torch.stack(batch_pos, dim=0).to(self.device)
             x_tensor = torch.stack(batch_x, dim=0).to(self.device)
             model_data = {'pos': pos_tensor, 'x': x_tensor.transpose(1, 2)}
+            
+            # Start timing model inference
+            t_model_start = time.time()
             
             with torch.no_grad():
                 if use_osr:
@@ -534,7 +651,20 @@ class ClassificationNode:
                     logits, embeddings = self.model(model_data)
                     pred_indices = torch.argmax(logits, dim=1)
                     confidences = torch.softmax(logits, dim=1)
-                    
+                else:
+                    # Standard forward pass - get only logits
+                    logits = self.model(model_data)
+                    pred_indices = torch.argmax(logits, dim=1)
+                    confidences = torch.softmax(logits, dim=1)
+            
+            # End timing model inference
+            model_inference_time = time.time() - t_model_start
+            
+            # Start timing OSR scoring (if enabled)
+            t_osr_start = time.time()
+            
+            with torch.no_grad():
+                if use_osr:
                     # Perform OSR scoring
                     try:
                         osr_results = self.osr_scorer.score_batch(logits, embeddings)
@@ -545,12 +675,15 @@ class ClassificationNode:
                         rospy.logerr(f"OSR scoring error: {e}")
                         osr_results = None
                 else:
-                    # Standard forward pass - get only logits
-                    logits = self.model(model_data)
-                    pred_indices = torch.argmax(logits, dim=1)
-                    confidences = torch.softmax(logits, dim=1)
                     osr_results = None
-                
+            
+            # End timing OSR scoring
+            osr_scoring_time = time.time() - t_osr_start
+            
+            # Start timing result packaging
+            t_package_start = time.time()
+            
+            with torch.no_grad():
                 for i in range(pred_indices.shape[0]):
                     class_idx = pred_indices[i].item()
                     confidence = float(confidences[i, class_idx])
@@ -615,14 +748,21 @@ class ClassificationNode:
                         )
                     else:
                         batch_result.processing_log.append(f"Cluster {cluster_index}: '{class_name}' (conf: {confidence:.3f})")
+            
+            # End timing result packaging
+            result_packaging_time = time.time() - t_package_start
 
-            self._publish_batch_result(batch_result, start_time)
+            self._publish_batch_result(batch_result, start_time,
+                                      data_conversion_time, model_inference_time,
+                                      osr_scoring_time, result_packaging_time)
 
         except Exception as e:
             batch_result.processing_log.append(f"Critical error in batch processing: {str(e)}")
             batch_result.processing_errors += 1
             rospy.logerr(f"Error processing batch for stamp {stamp}: {e}")
-            self._publish_batch_result(batch_result, start_time)
+            self._publish_batch_result(batch_result, start_time,
+                                      data_conversion_time, model_inference_time,
+                                      osr_scoring_time, result_packaging_time)
 
     def _create_failed_cluster_result(self, msg, cluster_index, error_message):
         failed_cluster = cluster_and_cls()
@@ -646,10 +786,18 @@ class ClassificationNode:
         failed_cluster.cluster_size = 0
         return failed_cluster
     
-    def _publish_batch_result(self, batch_result, start_time):
+    def _publish_batch_result(self, batch_result, start_time, 
+                             data_conversion_time, model_inference_time,
+                             osr_scoring_time, result_packaging_time):
         try:
             batch_result.processing_time_sec = time.time() - start_time
             batch_result.model_version = "pointnext-s"
+            
+            # Add timing to accumulator
+            self.timing_stats.add(data_conversion_time, model_inference_time,
+                                 osr_scoring_time, result_packaging_time,
+                                 batch_result.processing_time_sec,
+                                 batch_result.total_processed_clusters)
             
             self.batch_publisher.publish(batch_result)
             
@@ -660,16 +808,25 @@ class ClassificationNode:
             ood_count = batch_result.ood_count
             error_count = batch_result.processing_errors
             
+            # Convert to milliseconds for logging
+            total_ms = batch_result.processing_time_sec * 1000
+            data_ms = data_conversion_time * 1000
+            model_ms = model_inference_time * 1000
+            osr_ms = osr_scoring_time * 1000
+            pkg_ms = result_packaging_time * 1000
+            
             if self.enable_osr and self.osr_scorer is not None:
-                rospy.loginfo(f"Batch {batch_result.header.stamp}: "
-                             f"Input={total_clusters}, Processed={processed_clusters}, "
-                             f"Human={human_count}, FP={fp_count}, OOD={ood_count}, "
-                             f"Errors={error_count}, Time={batch_result.processing_time_sec:.3f}s")
+                rospy.loginfo(f"Batch @ {batch_result.header.stamp.to_sec():.3f}: "
+                             f"{total_ms:.1f}ms (Data={data_ms:.1f}ms, Model={model_ms:.1f}ms, "
+                             f"OSR={osr_ms:.1f}ms, Pkg={pkg_ms:.1f}ms) | "
+                             f"Clusters: {processed_clusters}/{total_clusters}, "
+                             f"Human={human_count}, FP={fp_count}, OOD={ood_count}, Errors={error_count}")
             else:
-                rospy.loginfo(f"Batch {batch_result.header.stamp}: "
-                             f"Input={total_clusters}, Processed={processed_clusters}, "
-                             f"Human={human_count}, FP={fp_count}, Errors={error_count}, "
-                             f"Time={batch_result.processing_time_sec:.3f}s")
+                rospy.loginfo(f"Batch @ {batch_result.header.stamp.to_sec():.3f}: "
+                             f"{total_ms:.1f}ms (Data={data_ms:.1f}ms, Model={model_ms:.1f}ms, "
+                             f"Pkg={pkg_ms:.1f}ms) | "
+                             f"Clusters: {processed_clusters}/{total_clusters}, "
+                             f"Human={human_count}, FP={fp_count}, Errors={error_count}")
             
             if rospy.get_param('~debug_logging', False):
                 for log_entry in batch_result.processing_log:
@@ -677,6 +834,10 @@ class ClassificationNode:
                     
         except Exception as e:
             rospy.logerr(f"Error publishing batch result: {e}")
+    
+    def _print_timing_summary(self):
+        """Print timing summary on shutdown."""
+        self.timing_stats.print_summary()
 
 if __name__ == '__main__':
     try:
