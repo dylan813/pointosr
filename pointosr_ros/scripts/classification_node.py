@@ -1,4 +1,4 @@
-#!/home/cerlab/miniconda3/envs/pointosr/bin/python
+#!/usr/bin/env python3
 import rospy
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Header

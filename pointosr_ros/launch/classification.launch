@@ -7,6 +7,8 @@
     <!-- Dataset and calibration directories -->
     <arg name="data_dir" default="/home/cerlab/Documents/data/pointosr/dataset" />
     <arg name="calibration_cache_dir" default="src/pointosr/calib_cache" /> <!-- keep default -->
+    <!-- Conda environment -->
+    <arg name="launch_prefix" default="/home/cerlab/miniconda3/envs/pointosr/bin/python3" />
 
     <!-- Calibration parameters -->
     <arg name="k_human" default="6" />
@@ -26,10 +28,10 @@
 
     <!-- ========== Nodes for classification with online calibration ========== -->
     <!-- Online calibration -->
-    <node name="online_calibration" pkg="pointosr_ros" type="run_online_calibration.py" output="screen" required="false" args="--model_path $(arg model_path) --config_path $(arg cfg_path) --data_dir $(arg data_dir) --calibration_cache_dir $(arg calibration_cache_dir) --k_human $(arg k_human) --k_false $(arg k_false) --target_tpr $(arg target_tpr) --device $(arg device)" />
+    <node name="online_calibration" pkg="pointosr_ros" type="run_online_calibration.py" output="screen" required="false" launch-prefix="$(arg launch_prefix)" args="--model_path $(arg model_path) --config_path $(arg cfg_path) --data_dir $(arg data_dir) --calibration_cache_dir $(arg calibration_cache_dir) --k_human $(arg k_human) --k_false $(arg k_false) --target_tpr $(arg target_tpr) --device $(arg device)" />
 
     <!-- Classification node -->
-    <node name="pointosr_live_classification" pkg="pointosr_ros" type="classification_node.py" output="screen" required="true">
+    <node name="pointosr_live_classification" pkg="pointosr_ros" type="classification_node.py" output="screen" required="true" launch-prefix="$(arg launch_prefix)">
         <param name="cfg_path" value="$(arg cfg_path)" />
         <param name="model_path" value="$(arg model_path)" />
         <param name="num_points" value="$(arg num_points)" />
