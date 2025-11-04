@@ -44,6 +44,7 @@ class ClassificationNode:
         stats_path = rospy.get_param('~stats_path', 'src/pointosr/calib_cache/stats.json')
         prototypes_path = rospy.get_param('~prototypes_path', 'src/pointosr/calib_cache/prototypes')
 
+        self.start_time = time.time()
         self.initial_fusion_config_path = fusion_config_path
         self.initial_stats_path = stats_path
         self.initial_prototypes_path = prototypes_path
@@ -235,6 +236,9 @@ class ClassificationNode:
                     with open(stamp_path, 'r') as stamp_file:
                         stamp_data = json.load(stamp_file)
                     completed_at = float(stamp_data.get('completed_at', 0.0))
+                    if completed_at < self.start_time:
+                        all_files_exist = False
+                        missing_files.append(f"{stamp_path} (stale results)")
                 except Exception as e:
                     rospy.logwarn(f"Could not read calibration completion stamp: {e}")
                     all_files_exist = False
