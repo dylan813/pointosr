@@ -28,9 +28,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy import stats
 import matplotlib.pyplot as plt
 
-# Add the pointosr package to Python path
-pointosr_path = '/home/cerlab/Documents/pointosr_ws/src/pointosr/pointosr'
-sys.path.insert(0, pointosr_path)
+# Add the pointosr package to Python path (portable)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+pointosr_path = os.path.abspath(os.path.join(current_dir, '..'))
+if pointosr_path not in sys.path:
+    sys.path.insert(0, pointosr_path)
 
 from pointnext.utils import EasyConfig
 from pointnext.dataset.human.human import HumanDataset

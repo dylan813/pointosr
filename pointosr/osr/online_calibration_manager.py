@@ -24,9 +24,11 @@ from torch.utils.data import DataLoader
 import logging
 import time
 
-# Add the pointosr package to Python path
-pointosr_path = '/home/cerlab/Documents/dynablox_ws/src/pointosr/pointosr'
-sys.path.insert(0, pointosr_path)
+# Add the pointosr package to Python path (portable)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+pointosr_path = os.path.abspath(os.path.join(current_dir, '..'))
+if pointosr_path not in sys.path:
+    sys.path.insert(0, pointosr_path)
 
 from pointnext.utils import EasyConfig
 from pointnext.dataset.human.human import HumanDataset
@@ -138,38 +140,6 @@ class OnlineCalibrationManager:
         logger.info(f"Model: {model_path}")
         logger.info(f"Data: {data_dir}")
         logger.info(f"Cache: {calibration_cache_dir}")
-    
-    # def should_recalibrate(self):
-    #     """
-    #     Check if calibration needs to be redone based on cache validity.
-    #     DISABLED: Always run fresh calibration instead of using cache.
-    #     
-    #     Returns:
-    #         bool: True if recalibration is needed
-    #     """
-    #     # Check if all cache files exist
-    #     required_files = [
-    #         self.cache_config_path,
-    #         self.cache_stats_path,
-    #         os.path.join(self.cache_prototypes_dir, f'human_k{self.k_human}', 'prototypes.npy'),
-    #         os.path.join(self.cache_prototypes_dir, f'fp_k{self.k_false}', 'prototypes.npy')
-    #     ]
-    #     
-    #     for file_path in required_files:
-    #         if not os.path.exists(file_path):
-    #             logger.info(f"Missing cache file: {file_path}")
-    #             return True
-    #     
-    #     # Check if model file is newer than cache
-    #     model_mtime = os.path.getmtime(self.model_path)
-    #     for file_path in required_files:
-    #         cache_mtime = os.path.getmtime(file_path)
-    #         if model_mtime > cache_mtime:
-    #             logger.info(f"Model is newer than cache: {file_path}")
-    #             return True
-    #     
-    #     logger.info("Using cached calibration results")
-    #     return False
     
     def load_model_and_data(self):
         """Load model and prepare datasets using existing modules."""
