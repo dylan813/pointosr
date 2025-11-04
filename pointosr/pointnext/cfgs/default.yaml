@@ -69,7 +69,7 @@ wandb:
   project: pointosr
   use_wandb: True
 
-log_dir: 'osr_human_dataset'  # Updated log directory name
+log_dir: 'pointosr_dataset'
 root_dir: log/
 print_freq: 10
 val_freq: 1
@@ -79,7 +79,3 @@ launcher: 'mp'
 local_rank: 0
 deterministic: True
 
-checkpoint:
-  save_path: 'model/checkpoints/osr_best.pth'  # OSR-specific checkpoint name
-  save_freq: 10  # Save checkpoint every 10 epochs
-  keep_interval: 50  # Keep checkpoints every 50 epochs
