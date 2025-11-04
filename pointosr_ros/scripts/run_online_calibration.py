@@ -1,4 +1,4 @@
-#!/home/cerlab/miniconda3/envs/pointosr/bin/python
+#!/usr/bin/env python3
 """
 Online Calibration Runner for PointOSR
 
