@@ -6,7 +6,7 @@
     <arg name="model_path" default="/home/cerlab/Documents/data/pointosr/ckpt/cfgs-train-pointnext-s-ngpus1-seed42-20250824-130842-fzwiyYEtV7a4GyHM2H48rq_ckpt_best.pth" />
     <!-- Dataset and calibration directories -->
     <arg name="data_dir" default="/home/cerlab/Documents/data/pointosr/dataset" />
-    <arg name="calibration_cache_dir" default="src/pointosr/calib_cache" />
+    <arg name="calibration_cache_dir" default="src/pointosr/calib_cache" /> <!-- keep default -->
 
     <!-- Calibration parameters -->
     <arg name="k_human" default="6" />
@@ -24,7 +24,7 @@
     <arg name="trigger_topic" default="/motion_detector/cluster_batch" />
     <arg name="device" default="cuda" />
 
-    <!-- ========== Classification with online calibration ========== -->
+    <!-- ========== Nodes for classification with online calibration ========== -->
     <!-- Online calibration -->
     <node name="online_calibration" pkg="pointosr_ros" type="run_online_calibration.py" output="screen" required="false" args="--model_path $(arg model_path) --config_path $(arg cfg_path) --data_dir $(arg data_dir) --calibration_cache_dir $(arg calibration_cache_dir) --k_human $(arg k_human) --k_false $(arg k_false) --target_tpr $(arg target_tpr) --device $(arg device)" />
 
