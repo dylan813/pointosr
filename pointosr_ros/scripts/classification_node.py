@@ -85,6 +85,42 @@ class TimingStats:
             print(f"\nPer-Cluster Average: {per_cluster_time:.2f} ms/cluster")
         
         print("="*60 + "\n")
+    
+    def save_to_file(self, output_path):
+        """Save timing summary to file."""
+        if self.num_batches == 0:
+            return
+        
+        # Convert to numpy arrays for statistics (in seconds to match Dynablox format)
+        data_conv = np.array(self.data_conversion_times)
+        model = np.array(self.model_inference_times)
+        osr = np.array(self.osr_scoring_times)
+        packaging = np.array(self.result_packaging_times)
+        total = np.array(self.total_batch_times)
+        
+        try:
+            with open(output_path, 'w') as f:
+                f.write("PointOSR Timing\n")
+                f.write("-" * 60 + "\n")
+                f.write(f"Component                      Calls    Total(s)  Mean(s)   StdDev(s)  Min(s)     Max(s)\n")
+                f.write("-" * 60 + "\n")
+                
+                # Format: component_name   calls   total   (mean +- std)   [min, max]
+                f.write(f"data_conversion               {self.num_batches:5d}  {np.sum(data_conv):8.3f}  {np.mean(data_conv):8.6f}  {np.std(data_conv):9.6f}  {np.min(data_conv):9.6f}  {np.max(data_conv):9.6f}\n")
+                f.write(f"model_inference               {self.num_batches:5d}  {np.sum(model):8.3f}  {np.mean(model):8.6f}  {np.std(model):9.6f}  {np.min(model):9.6f}  {np.max(model):9.6f}\n")
+                f.write(f"osr_scoring                   {self.num_batches:5d}  {np.sum(osr):8.3f}  {np.mean(osr):8.6f}  {np.std(osr):9.6f}  {np.min(osr):9.6f}  {np.max(osr):9.6f}\n")
+                f.write(f"result_packaging              {self.num_batches:5d}  {np.sum(packaging):8.3f}  {np.mean(packaging):8.6f}  {np.std(packaging):9.6f}  {np.min(packaging):9.6f}  {np.max(packaging):9.6f}\n")
+                f.write(f"total_batch_processing        {self.num_batches:5d}  {np.sum(total):8.3f}  {np.mean(total):8.6f}  {np.std(total):9.6f}  {np.min(total):9.6f}  {np.max(total):9.6f}\n")
+                f.write("-" * 60 + "\n")
+                f.write(f"\nTotal Batches Processed: {self.num_batches}\n")
+                f.write(f"Total Clusters Processed: {self.num_clusters_processed}\n")
+                if self.num_clusters_processed > 0:
+                    per_cluster_time = (np.sum(total) / self.num_clusters_processed)
+                    f.write(f"Average Time per Cluster: {per_cluster_time:.6f} s/cluster\n")
+            
+            print(f"PointOSR timing saved to: {output_path}")
+        except Exception as e:
+            print(f"Error saving PointOSR timing to file: {e}")
 
 
 class ClassificationNode:
@@ -119,6 +155,9 @@ class ClassificationNode:
         self.fusion_config_path = None
         self.stats_path = None
         self.prototypes_path = None
+        
+        # Get output directory for saving timing data (if evaluation is enabled)
+        self.output_directory = rospy.get_param('/motion_detector/evaluation/output_directory', None)
         
         # Initialize timing statistics
         self.timing_stats = TimingStats()
@@ -836,8 +875,14 @@ class ClassificationNode:
             rospy.logerr(f"Error publishing batch result: {e}")
     
     def _print_timing_summary(self):
-        """Print timing summary on shutdown."""
+        """Print timing summary on shutdown and save to file."""
         self.timing_stats.print_summary()
+        
+        # Save to file if output directory is available
+        if self.output_directory:
+            import os
+            output_file = os.path.join(self.output_directory, "pointosr_timings.txt")
+            self.timing_stats.save_to_file(output_file)
 
 if __name__ == '__main__':
     try:
