@@ -157,7 +157,10 @@ class ClassificationNode:
         self.prototypes_path = None
         
         # Get output directory for saving timing data (if evaluation is enabled)
-        self.output_directory = rospy.get_param('/motion_detector/evaluation/output_directory', None)
+        # Try to get the actual timestamped directory first, fall back to base directory
+        self.output_directory = rospy.get_param('/motion_detector/evaluation/actual_output_directory', None)
+        if self.output_directory is None:
+            self.output_directory = rospy.get_param('/motion_detector/evaluation/output_directory', None)
         
         # Initialize timing statistics
         self.timing_stats = TimingStats()
