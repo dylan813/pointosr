@@ -20,6 +20,13 @@
     <arg name="max_cluster_topics" default="32" />
     <arg name="debug_logging" default="false" />
     
+    <!-- ClusterArray mode (optimized) -->
+    <arg name="use_cluster_array" default="true" />
+    <arg name="cluster_array_topic" default="/cluster_array" />
+    
+    <!-- FilteredClusterArray mode (ONLY mode - always active) -->
+    <arg name="filtered_cluster_array_topic" default="/filtered_cluster_array" />
+    
     <!-- Keep defaults -->
     <arg name="enable_osr" default="true" />
     <arg name="input_topic_prefix" default="/cluster_" />
@@ -36,8 +43,18 @@
         <param name="model_path" value="$(arg model_path)" />
         <param name="num_points" value="$(arg num_points)" />
         <param name="max_cluster_topics" value="$(arg max_cluster_topics)" />
+        
+        <!-- ClusterArray mode parameters -->
+        <param name="use_cluster_array" value="$(arg use_cluster_array)" />
+        <param name="cluster_array_topic" value="$(arg cluster_array_topic)" />
+        
+        <!-- FilteredClusterArray mode parameters (ONLY mode) -->
+        <param name="filtered_cluster_array_topic" value="$(arg filtered_cluster_array_topic)" />
+        
+        <!-- Legacy parameters (for backwards compatibility) -->
         <param name="input_topic_prefix" value="$(arg input_topic_prefix)" />
         <param name="trigger_topic" value="$(arg trigger_topic)" />
+        
         <param name="device" value="$(arg device)" />
         <param name="debug_logging" value="$(arg debug_logging)" />
         <param name="k_human" value="$(arg k_human)" />

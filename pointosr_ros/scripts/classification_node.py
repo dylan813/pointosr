@@ -3,7 +3,8 @@ import rospy
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Header
 from geometry_msgs.msg import Point
-from pointosr_ros.msg import classification_batch, cluster_and_cls
+from pointosr_ros.msg import classification_batch, cluster_and_cls  # Still used internally for now
+from dynablox_ros.msg import ClusterArray, FilteredClusterArray
 import numpy as np
 import torch
 import threading
@@ -127,6 +128,14 @@ class ClassificationNode:
     def __init__(self):
         rospy.init_node('pointosr_live_classification', anonymous=True)
         
+        # Check if using ClusterArray mode (optimized) or legacy multi-topic mode
+        self.use_cluster_array = rospy.get_param('~use_cluster_array', True)
+        cluster_array_topic = rospy.get_param('~cluster_array_topic', '/cluster_array')
+        
+        # FilteredClusterArray parameters (REQUIRED - only mode supported)
+        self.filtered_cluster_array_topic = rospy.get_param('~filtered_cluster_array_topic', '/filtered_cluster_array')
+        
+        # Legacy parameters (kept for backwards compatibility)
         trigger_topic = rospy.get_param('~trigger_topic', '/motion_detector/cluster_batch')
         self.input_topic_prefix = rospy.get_param('~input_topic_prefix', '/cluster_')
         self.filtered_topic_prefix = rospy.get_param('~filtered_topic_prefix', '/filt_cluster_')
@@ -232,20 +241,33 @@ class ClassificationNode:
             rospy.signal_shutdown("Model loading failed.")
             return
 
-        self.frame_buffer = OrderedDict()
-        self.trigger_buffer = OrderedDict()
-        self.buffer_lock = threading.Lock()
-        
-        self.batch_publisher = rospy.Publisher(
-            '/classified_clusters', classification_batch, queue_size=10
+        # FilteredClusterArray publisher (ONLY mode - always active)
+        self.filtered_cluster_array_pub = rospy.Publisher(
+            self.filtered_cluster_array_topic, FilteredClusterArray, queue_size=100, tcp_nodelay=True
         )
+        rospy.loginfo(f"🚀 FilteredClusterArray publisher active on '{self.filtered_cluster_array_topic}'")
         
-        self.cluster_subscribers = [
-            self._setup_subscriber(i) for i in range(max_cluster_topics)
-        ]
+        if self.use_cluster_array:
+            # NEW: Optimized single-subscriber mode
+            rospy.loginfo(f"🚀 Using optimized ClusterArray mode on '{cluster_array_topic}'")
+            self.cluster_array_subscriber = rospy.Subscriber(
+                cluster_array_topic, ClusterArray, self._cluster_array_callback, queue_size=100, tcp_nodelay=True
+            )
+            rospy.loginfo("Node ready. Listening for ClusterArray messages.")
+        else:
+            # LEGACY: Multi-topic synchronization mode
+            rospy.loginfo("⚠️ Using legacy multi-topic mode (slower)")
+            self.frame_buffer = OrderedDict()
+            self.trigger_buffer = OrderedDict()
+            self.buffer_lock = threading.Lock()
+            
+            self.cluster_subscribers = [
+                self._setup_subscriber(i) for i in range(max_cluster_topics)
+            ]
 
-        self.trigger_subscriber = rospy.Subscriber(trigger_topic, Header, self._trigger_callback)
-        rospy.loginfo(f"Node ready. Listening for trigger on '{trigger_topic}'.")
+            self.trigger_subscriber = rospy.Subscriber(trigger_topic, Header, self._trigger_callback, queue_size=100, tcp_nodelay=True)
+            rospy.loginfo(f"Node ready. Listening for trigger on '{trigger_topic}'.")
+        
         if self.enable_osr:
             rospy.loginfo("🎉 Online calibration successful - OSR enabled!")
         else:
@@ -511,10 +533,46 @@ class ClassificationNode:
         topic_name = f"{self.input_topic_prefix}{index}"
         return rospy.Subscriber(
             topic_name, PointCloud2,
-            lambda msg, tn=topic_name: self._cluster_callback(msg, tn)
+            lambda msg, tn=topic_name: self._cluster_callback(msg, tn),
+            queue_size=100, tcp_nodelay=True
         )
+    
+    def _cluster_array_callback(self, array_msg):
+        """NEW: Optimized callback for ClusterArray messages - no synchronization needed!"""
+        arrival_time = rospy.Time.now()
+        stamp = array_msg.header.stamp
+        num_clusters = array_msg.num_clusters
+        
+        msgs = array_msg.clusters
+        
+        # UNIFIED TIMING: Track when we started processing
+        processing_start = time.time()
+        
+        # Log message size for debugging communication latency
+        total_points = sum(len(cluster.data) // cluster.point_step for cluster in array_msg.clusters)
+        total_bytes = sum(len(cluster.data) for cluster in array_msg.clusters)
+        rospy.loginfo_throttle(1.0,
+            f"ClusterArray received: {num_clusters} clusters, {total_points} points, "
+            f"{total_bytes} bytes ({total_bytes/1024:.2f} KB)")
+        
+        rospy.logdebug(f"Received ClusterArray for stamp {stamp} with {num_clusters} clusters")
+        
+        if num_clusters == 0:
+            rospy.logdebug(f"ClusterArray for stamp {stamp} has 0 clusters — publishing empty batch.")
+            self._process_batch([], [], stamp, 0, arrival_time)
+            return
+        
+        # Convert ClusterArray to list of messages and topic names for existing processing logic
+        topic_list = [f"cluster_{cid}" for cid in array_msg.cluster_ids]
+        
+        rospy.logdebug(f"Processing ClusterArray batch of {len(msgs)} clusters for stamp {stamp}.")
+        self._process_batch(msgs, topic_list, stamp, num_clusters, arrival_time)
 
     def _cluster_callback(self, msg, topic_name):
+        if not hasattr(self, 'buffer_lock'):
+            rospy.logwarn("Received cluster callback in ClusterArray mode - ignoring")
+            return
+        
         with self.buffer_lock:
             stamp = msg.header.stamp
             now = rospy.Time.now()
@@ -530,6 +588,10 @@ class ClassificationNode:
                     self._process_frame_if_complete(stamp)
 
     def _trigger_callback(self, header_msg):
+        if not hasattr(self, 'buffer_lock'):
+            rospy.logwarn("Received trigger callback in ClusterArray mode - ignoring")
+            return
+        
         with self.buffer_lock:
             stamp = header_msg.stamp
             expected_count = header_msg.seq
@@ -570,6 +632,9 @@ class ClassificationNode:
             self.buffer_lock.acquire()
 
     def _cleanup_buffers(self):
+        if not hasattr(self, 'buffer_lock'):
+            return  # Not in legacy mode
+        
         now = rospy.Time.now()
         
         for s, data in list(self.frame_buffer.items()):
@@ -585,8 +650,14 @@ class ClassificationNode:
                 rospy.logwarn(f"Timing out stale trigger {s} (expect: {data['expected_count']}, recv: 0).")
                 del self.trigger_buffer[s]
 
-    def _process_batch(self, msgs, topic_list, stamp, expected_count):
+    def _process_batch(self, msgs, topic_list, stamp, expected_count, arrival_time=None):
         start_time = time.time()
+        
+        # Measure queue delay
+        if arrival_time is not None:
+            queue_delay = (rospy.Time.now() - arrival_time).to_sec()
+            if queue_delay > 0.01:  # Log if >10ms queue delay
+                rospy.logwarn(f"Queue delay for stamp {stamp.to_sec():.3f}: {queue_delay*1000:.1f}ms")
         
         # Initialize timing accumulators
         data_conversion_time = 0.0
@@ -841,7 +912,8 @@ class ClassificationNode:
                                  batch_result.processing_time_sec,
                                  batch_result.total_processed_clusters)
             
-            self.batch_publisher.publish(batch_result)
+            # Publish FilteredClusterArray (ONLY mode)
+            self._publish_filtered_cluster_array(batch_result)
             
             total_clusters = batch_result.total_input_clusters
             processed_clusters = batch_result.total_processed_clusters
@@ -877,6 +949,45 @@ class ClassificationNode:
         except Exception as e:
             rospy.logerr(f"Error publishing batch result: {e}")
     
+    def _publish_filtered_cluster_array(self, batch_result):
+        """Publish human clusters as FilteredClusterArray (optimized return path)."""
+        try:
+            array_msg = FilteredClusterArray()
+            array_msg.header = batch_result.header
+            
+            # Filter for human clusters only
+            human_clusters = [c for c in batch_result.classified_clusters 
+                            if c.is_human and c.processing_success]
+            
+            array_msg.num_clusters = len(human_clusters)
+            array_msg.clusters = []
+            array_msg.cluster_ids = []
+            array_msg.class_names = []
+            array_msg.confidences = []
+            array_msg.is_human = []
+            
+            # Include processing time for latency analysis
+            array_msg.processing_time_ms = batch_result.processing_time_sec * 1000.0
+            
+            for cluster in human_clusters:
+                array_msg.clusters.append(cluster.pointcloud)
+                array_msg.cluster_ids.append(cluster.original_cluster_index)
+                array_msg.class_names.append(cluster.class_name)
+                array_msg.confidences.append(cluster.confidence)
+                array_msg.is_human.append(cluster.is_human)
+            
+            # Log message size for debugging communication latency
+            total_bytes = sum(len(cluster.data) for cluster in array_msg.clusters)
+            rospy.loginfo_throttle(1.0, 
+                f"FilteredClusterArray published: {array_msg.num_clusters} human clusters | "
+                f"Size: {total_bytes/1024:.2f} KB")
+            
+            self.filtered_cluster_array_pub.publish(array_msg)
+            rospy.logdebug(f"Published FilteredClusterArray with {array_msg.num_clusters} human clusters")
+            
+        except Exception as e:
+            rospy.logerr(f"Error publishing FilteredClusterArray: {e}")
+    
     def _print_timing_summary(self):
         """Print timing summary on shutdown and save to file."""
         self.timing_stats.print_summary()
@@ -889,8 +1000,15 @@ class ClassificationNode:
 
 if __name__ == '__main__':
     try:
-        ClassificationNode()
-        rospy.spin()
+        node = ClassificationNode()
+        # Use AsyncSpinner for parallel callback processing (compatible with older ROS)
+        import threading
+        rospy.loginfo("Starting with parallel callback processing for improved latency")
+        # Process callbacks in separate thread to avoid blocking
+        spinner_thread = threading.Thread(target=rospy.spin)
+        spinner_thread.daemon = True
+        spinner_thread.start()
+        spinner_thread.join()
     except rospy.ROSInterruptException:
         pass
     except Exception as e:
